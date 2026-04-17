@@ -21,8 +21,29 @@ const GoogleIcon = () => (
   </svg>
 )
 
+/* ── Role-card icon: Streamer (headset/mic) ── */
+const StreamerIcon = () => (
+  <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="20" r="20" fill="#EEF1FF"/>
+    <path d="M20 12a7 7 0 0 0-7 7v2a2 2 0 0 0 2 2h1v-4a4 4 0 1 1 8 0v4h1a2 2 0 0 0 2-2v-2a7 7 0 0 0-7-7z" stroke="#3B5BFF" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M15 23v1a5 5 0 0 0 5 5v0a5 5 0 0 0 5-5v-1" stroke="#3B5BFF" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+    <circle cx="20" cy="28" r="1" fill="#3B5BFF"/>
+  </svg>
+)
+
+/* ── Role-card icon: Brand (megaphone/rocket) ── */
+const BrandIcon = () => (
+  <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="20" r="20" fill="#FFF4EE"/>
+    <path d="M14 22l2-8h8l2 8" stroke="#FF6B35" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12 22h16v2a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2v-2z" stroke="#FF6B35" strokeWidth="1.5" fill="none"/>
+    <path d="M18 26v2M22 26v2" stroke="#FF6B35" strokeWidth="1.5" strokeLinecap="round"/>
+    <circle cx="20" cy="17" r="2" stroke="#FF6B35" strokeWidth="1.5" fill="none"/>
+  </svg>
+)
+
 const ERROR_MESSAGES = {
-  wrong_role:   'This Google account is registered as a brand. Use the brand login instead.',
+  wrong_role:   'This account is registered under a different role.',
   oauth_failed: 'Google sign-in failed. Please try again.',
   server_error: 'Something went wrong on our end. Please try again.',
 }
@@ -32,21 +53,24 @@ export default function StreamerLogin() {
   const location  = useLocation()
   const [checking, setChecking] = useState(true)
   const [error,    setError]    = useState('')
+  const [hovered,  setHovered]  = useState(null) // 'streamer' | 'brand' | null
 
   useEffect(() => {
-  const params = new URLSearchParams(location.search)
-  const err = params.get('error')
-  if (err) setError(ERROR_MESSAGES[err] || 'Sign-in failed. Please try again.')
+    const params = new URLSearchParams(location.search)
+    const err = params.get('error')
+    if (err) setError(ERROR_MESSAGES[err] || 'Sign-in failed. Please try again.')
 
-  getMe().then(user => {
-    if (user && user.role === 'streamer') {
-      const hasSetup = localStorage.getItem(`setup_done_${user.id}`)
-      navigate(hasSetup ? '/streamer-dashboard' : '/setup/profile', { replace: true })
-    } else {
-      setChecking(false)
-    }
-  })
-}, [])
+    getMe().then(user => {
+      if (user && user.role === 'streamer') {
+        const hasSetup = localStorage.getItem(`setup_done_${user.id}`)
+        navigate(hasSetup ? '/streamer-dashboard' : '/setup/profile', { replace: true })
+      } else if (user && user.role === 'advertiser') {
+        navigate('/campaign-manager', { replace: true })
+      } else {
+        setChecking(false)
+      }
+    })
+  }, [])
 
   if (checking) {
     return (
@@ -66,38 +90,60 @@ export default function StreamerLogin() {
         Overlays
       </a>
 
-      <div className="sl-card">
-        <div className="sl-card-top">
-          <div className="sl-eyebrow">Streamer Portal</div>
-          <h1 className="sl-h1">
-            Sign in or<br/><em>get started.</em>
-          </h1>
-          <p className="sl-sub">
-            New or returning — one click is all it takes.
-            Manage your dashboard, customize your overlays, and more.
-          </p>
-        </div>
-
-        <div className="sl-divider"></div>
-
-        {/* Error message from failed OAuth */}
-        {error && <div className="sl-error">{error}</div>}
-
-        <button className="sl-google-btn" onClick={() => loginWithGoogle('streamer')}>
-          <GoogleIcon />
-          Continue with Google
-        </button>
-
-        <div className="sl-or-row">
-          <span className="sl-or-line"></span>
-          <span className="sl-or-text">first time? we'll create your account</span>
-          <span className="sl-or-line"></span>
-        </div>
-
-        <p className="sl-hint">
-          Are you a brand?{' '}
-          <a href="/login/advertiser">Sign in here →</a>
+      {/* ── Header ── */}
+      <div className="sl-header">
+        <div className="sl-eyebrow">Choose your portal</div>
+        <h1 className="sl-h1">
+          Sign in or<br/><em>get started.</em>
+        </h1>
+        <p className="sl-sub">
+          Select how you'd like to use Overlays — stream with personalized overlays or promote your brand to thousands of streamers.
         </p>
+      </div>
+
+      {/* ── Error ── */}
+      {error && <div className="sl-error">{error}</div>}
+
+      {/* ── Cards row ── */}
+      <div className={`sl-cards-row ${hovered ? 'sl-cards-row--active' : ''}`}>
+
+        {/* Streamer card */}
+        <div
+          className={`sl-role-card ${hovered === 'streamer' ? 'sl-role-card--hovered' : ''} ${hovered === 'brand' ? 'sl-role-card--dimmed' : ''}`}
+          onMouseEnter={() => setHovered('streamer')}
+          onMouseLeave={() => setHovered(null)}
+        >
+          <div className="sl-role-icon"><StreamerIcon /></div>
+          <div className="sl-role-tag sl-role-tag--streamer">Streamer</div>
+          <h2 className="sl-role-title">I create content</h2>
+          <p className="sl-role-desc">
+            Manage your dashboard, customize overlays, and grow your audience with powerful tools.
+          </p>
+          <button className="sl-google-btn" onClick={() => loginWithGoogle('streamer')}>
+            <GoogleIcon />
+            Continue with Google
+          </button>
+          <span className="sl-role-note">New accounts auto-created on first sign-in</span>
+        </div>
+
+        {/* Brand card */}
+        <div
+          className={`sl-role-card ${hovered === 'brand' ? 'sl-role-card--hovered' : ''} ${hovered === 'streamer' ? 'sl-role-card--dimmed' : ''}`}
+          onMouseEnter={() => setHovered('brand')}
+          onMouseLeave={() => setHovered(null)}
+        >
+          <div className="sl-role-icon"><BrandIcon /></div>
+          <div className="sl-role-tag sl-role-tag--brand">Brand</div>
+          <h2 className="sl-role-title">I run campaigns</h2>
+          <p className="sl-role-desc">
+            Launch campaigns, target streamers, and track real-time performance analytics.
+          </p>
+          <button className="sl-google-btn sl-google-btn--brand" onClick={() => loginWithGoogle('advertiser')}>
+            <GoogleIcon />
+            Continue with Google
+          </button>
+          <span className="sl-role-note">New accounts auto-created on first sign-in</span>
+        </div>
       </div>
 
       <p className="sl-footer-note">
