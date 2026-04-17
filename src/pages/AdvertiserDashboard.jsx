@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getAllBrandsWithStats, getCampaigns, getBillingTransactions } from '../assets/overlaysStore'
+import DownloadReportModal from './DownloadReportModal'
 import './AdvertiserDashboard.css'
 
 /* ── DEV MODE ── */
@@ -137,6 +138,7 @@ export default function AdvertiserDashboard() {
   const [billingFilters, setBillingFilters] = useState({ tier: 'All', brand: 'All' })
   const [brandStatusFilter, setBrandStatusFilter] = useState('all')
   const [chartView, setChartView] = useState('monthly') // 'weekly' | 'monthly' | 'yearly' | '2025' | '2024'
+  const [showDownloadModal, setShowDownloadModal] = useState(false)
   const chartData = {
     weekly:  AGENCY_WEEKLY,
     monthly: AGENCY_MONTHLY,
@@ -498,7 +500,7 @@ export default function AdvertiserDashboard() {
                   <h1 className="ad-page-title">Spend <em>overview</em></h1>
                 </div>
                 <div className="ad-page-actions">
-                  <button className="ad-btn-ghost" onClick={exportCSV}>↓ Export CSV</button>
+                  <button className="ad-btn-ghost" onClick={() => setShowDownloadModal(true)}>↓ Download Report</button>
                 </div>
               </div>
 
@@ -810,6 +812,16 @@ export default function AdvertiserDashboard() {
 
         </main>
       </div>
+
+      {showDownloadModal && (
+        <DownloadReportModal
+          brands={BRANDS}
+          onClose={() => setShowDownloadModal(false)}
+          onDownload={(config) => {
+            alert(`Generating ${config.fileType} report for ${config.brand} (Tier: ${config.tier}).\nPassword Protecion: ${config.locked ? 'Enabled' : 'Disabled'}`)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -1,0 +1,149 @@
+/* DownloadReportModal.css */
+
+.drm-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem;
+}
+
+.drm-modal {
+  background: white; border-radius: 24px;
+  width: 100%; max-width: 500px;
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.22);
+  display: flex; flex-direction: column;
+  font-family: 'Geist', sans-serif;
+}
+
+.drm-header {
+  display: flex; align-items: flex-start;
+  justify-content: space-between;
+  padding: 1.75rem 1.75rem 0;
+  margin-bottom: 1.25rem;
+}
+.drm-eyebrow {
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: #3B5BFF; margin-bottom: 0.3rem;
+}
+.drm-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.75rem; font-weight: 600;
+  letter-spacing: -0.02em; margin: 0 0 0.4rem;
+}
+.drm-close {
+  background: none; border: none; cursor: pointer;
+  font-size: 1rem; color: #9CA3AF;
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 0.25rem;
+  transition: background 0.15s, color 0.15s;
+}
+.drm-close:hover { background: #F3F4F6; color: #111; }
+
+.drm-section { padding: 0 1.75rem; margin-bottom: 1.25rem; }
+.drm-section-label {
+  font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: #6B7280; margin-bottom: 0.75rem;
+}
+.drm-divider {
+  height: 1px; background: #F3F4F6;
+  margin: 0 1.75rem 1.25rem;
+}
+
+.drm-field-group {
+    display: flex; gap: 1rem; margin-bottom: 1rem;
+}
+.drm-field {
+    flex: 1; display: flex; flex-direction: column; gap: 0.4rem;
+}
+.drm-label {
+    font-size: 0.78rem; font-weight: 500; color: #111827;
+}
+
+.drm-select, .drm-input {
+  background: #F9FAFB; border: 1.5px solid #E5E7EB;
+  border-radius: 10px; padding: 0.65rem 0.9rem;
+  font-family: 'Geist', sans-serif; font-size: 0.87rem; color: #111827;
+  outline: none; transition: border-color 0.15s;
+  width: 100%; box-sizing: border-box;
+}
+.drm-select:focus, .drm-input:focus { border-color: #3B5BFF; }
+
+.drm-type-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem;
+}
+.drm-type-card {
+    border: 1.5px solid #E5E7EB; background: #F9FAFB;
+    border-radius: 8px; padding: 0.6rem 0.2rem;
+    cursor: pointer; text-align: center;
+    font-size: 0.8rem; font-weight: 500; color: #374151;
+    transition: all 0.15s;
+}
+.drm-type-card:hover { border-color: #3B5BFF; color: #3B5BFF; background: #EEF2FF; }
+.drm-type-card.active { border-color: #3B5BFF; color: #3B5BFF; background: #EEF2FF; }
+
+.drm-lock-section {
+    background: #F0F4FF; border: 1px solid #C7D2FE;
+    border-radius: 12px; padding: 1rem; margin-bottom: 1rem;
+}
+.drm-toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+}
+.drm-lock-info {
+    display: flex; flex-direction: column; gap: 0.2rem;
+}
+.drm-lock-title { font-size: 0.85rem; font-weight: 600; color: #111827; }
+.drm-lock-desc { font-size: 0.72rem; color: #6B7280; }
+
+.drm-toggle {
+  width: 40px; height: 22px; border-radius: 100px;
+  background: #D1D5DB; border: none; cursor: pointer;
+  position: relative; flex-shrink: 0;
+  transition: background 0.2s;
+}
+.drm-toggle.on { background: #3B5BFF; }
+.drm-toggle-knob {
+  position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  transition: transform 0.2s;
+}
+.drm-toggle.on .drm-toggle-knob { transform: translateX(18px); }
+
+.drm-password-box {
+    margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem;
+    background: white; border: 1px solid #C7D2FE;
+    padding: 0.5rem 0.75rem; border-radius: 8px;
+}
+.drm-password {
+    flex: 1; font-family: monospace; font-size: 0.95rem; font-weight: 600;
+    color: #3B5BFF; letter-spacing: 1px;
+}
+.drm-copy-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 0.75rem; color: #3B5BFF; font-weight: 500;
+}
+
+.drm-actions {
+  display: flex; gap: 0.75rem; justify-content: flex-end;
+  padding: 1.25rem 1.75rem 1.75rem;
+  border-top: 1px solid #F3F4F6;
+}
+.drm-btn-ghost {
+  background: none; border: 1.5px solid #E5E7EB;
+  color: #374151; font-family: 'Geist', sans-serif;
+  font-size: 0.87rem; font-weight: 400;
+  padding: 0.65rem 1.3rem; border-radius: 100px;
+  cursor: pointer; transition: all 0.15s;
+}
+.drm-btn-ghost:hover { border-color: #374151; }
+.drm-btn-primary {
+  background: #3B5BFF; color: white;
+  font-family: 'Geist', sans-serif; font-size: 0.87rem; font-weight: 500;
+  padding: 0.65rem 1.5rem; border-radius: 100px; border: none;
+  cursor: pointer; transition: opacity 0.15s, transform 0.15s;
+}
+.drm-btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
