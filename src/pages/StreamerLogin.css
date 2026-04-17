@@ -175,7 +175,7 @@
   background: #EEF1FF; color: #3B5BFF;
 }
 .sl-role-tag--brand {
-  background: #FFF4EE; color: #FF6B35;
+  background: #EEF1FF; color: #3B5BFF;
 }
 
 /* ── Card title ── */
@@ -209,9 +209,9 @@
 .sl-google-btn:hover  { opacity: 0.85; transform: translateY(-1px); }
 .sl-google-btn:active { transform: translateY(0); opacity: 0.9; }
 
-/* Brand variant — warm accent */
+/* Brand variant — removed orange accent, using default black */
 .sl-google-btn--brand {
-  background: #FF6B35;
+  background: var(--ink);
 }
 .sl-google-btn--brand:hover { opacity: 0.85; }
 

@@ -6,6 +6,7 @@ import ProfileSetup from './pages/Profilesetup'
 import AdvertiserLogin from './pages/AdvertiserLogin'
 import CampaignManager from './pages/CampaignManager'
 import AdvertiserDashboard from './pages/AdvertiserDashboard'
+import AdvertiserSetup from './pages/AdvertiserSetup'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -21,8 +22,8 @@ function App() {
         <Route path="/setup/profile" element={<ProfileSetup />} />
         <Route path="/login/advertiser" element={<AdvertiserLogin />} />
         <Route path="/campaign-manager" element={<CampaignManager />} />
-        <Route path="/advertiser-dashboard" element={<AdvertiserDashboard />} />
-        
+        <Route path="/advertiser-dashboard/:id" element={<AdvertiserDashboard />} />
+        <Route path="/setup/advertiser/:id" element={<AdvertiserSetup />} />
           <Route path="/streamer-dashboard" element={<StreamerDashboard />} />
         
 

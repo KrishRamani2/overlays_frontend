@@ -40,7 +40,8 @@ export default function AdvertiserLogin() {
 
     getMe().then(user => {
       if (user && user.role === 'advertiser') {
-        navigate('/campaign-manager', { replace: true })
+        const id = user.id || user._id || 'demo-id';
+        navigate(`/setup/advertiser/${id}`, { replace: true })
       } else {
         setChecking(false)
       }

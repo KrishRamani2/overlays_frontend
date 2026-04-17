@@ -3,7 +3,7 @@ import { getBrands, addCampaign } from '../assets/overlaysStore'
 import { useNavigate } from 'react-router-dom'
 import SubmitCampaignModal from './SubmitCampaignModal'
 import './SubmitCampaignModal.css'
-import { logout } from '../api/auth'
+import { logout, getMe } from '../api/auth'
 import './CampaignManager.css'
 
 const LogoIcon = () => (
@@ -98,6 +98,12 @@ function isContiguous(indices) {
 
 export default function CampaignManager() {
   const navigate = useNavigate()
+  const [userId, setUserId] = useState('demo-id')
+  useEffect(() => {
+    getMe().then(u => {
+      if(u) setUserId(u.id || u._id || 'demo-id')
+    })
+  }, [])
   /* ── Campaign state ── */
   const [campaigns,        setCampaigns]       = useState([])
   const [activeCampaignId, setActiveCampaignId]= useState(null)
@@ -457,9 +463,9 @@ export default function CampaignManager() {
                 key={item.id}
                 className={`cm-nav-item ${item.id === 'campaigns' ? 'active' : ''}`}
                 onClick={() => {
-                  if (item.id === 'overview') navigate('/advertiser-dashboard')
-                  else if (item.id === 'billing') navigate('/advertiser-dashboard?page=billing')
-                  else if (item.id === 'settings') navigate('/advertiser-dashboard?page=settings')
+                  if (item.id === 'overview') navigate(`/advertiser-dashboard/${userId}`)
+                  else if (item.id === 'billing') navigate(`/advertiser-dashboard/${userId}?page=billing`)
+                  else if (item.id === 'settings') navigate(`/advertiser-dashboard/${userId}?page=settings`)
                 }}
               >
                 <span className="cm-nav-icon">{item.icon}</span>

@@ -28,7 +28,8 @@ function usePostLoginRedirect() {
         const hasSetup = localStorage.getItem(`setup_done_${user.id}`)
         navigate(hasSetup ? '/streamer-dashboard' : '/setup/profile', { replace: true })
       } else if (user.role === 'advertiser') {
-        navigate('/advertiser-dashboard', { replace: true })
+        const id = user.id || user._id || 'demo-id';
+        navigate(`/setup/advertiser/${id}`, { replace: true })
       } else if (user.role === 'admin') {
         navigate('/admin/control', { replace: true })
       }

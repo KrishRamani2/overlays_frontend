@@ -34,11 +34,11 @@ const StreamerIcon = () => (
 /* ── Role-card icon: Brand (megaphone/rocket) ── */
 const BrandIcon = () => (
   <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-    <circle cx="20" cy="20" r="20" fill="#FFF4EE"/>
-    <path d="M14 22l2-8h8l2 8" stroke="#FF6B35" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M12 22h16v2a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2v-2z" stroke="#FF6B35" strokeWidth="1.5" fill="none"/>
-    <path d="M18 26v2M22 26v2" stroke="#FF6B35" strokeWidth="1.5" strokeLinecap="round"/>
-    <circle cx="20" cy="17" r="2" stroke="#FF6B35" strokeWidth="1.5" fill="none"/>
+    <circle cx="20" cy="20" r="20" fill="#EEF1FF"/>
+    <path d="M14 22l2-8h8l2 8" stroke="#3B5BFF" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12 22h16v2a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2v-2z" stroke="#3B5BFF" strokeWidth="1.5" fill="none"/>
+    <path d="M18 26v2M22 26v2" stroke="#3B5BFF" strokeWidth="1.5" strokeLinecap="round"/>
+    <circle cx="20" cy="17" r="2" stroke="#3B5BFF" strokeWidth="1.5" fill="none"/>
   </svg>
 )
 
@@ -138,7 +138,7 @@ export default function StreamerLogin() {
           <p className="sl-role-desc">
             Launch campaigns, target streamers, and track real-time performance analytics.
           </p>
-          <button className="sl-google-btn sl-google-btn--brand" onClick={() => loginWithGoogle('advertiser')}>
+          <button className="sl-google-btn" onClick={() => window.location.href = 'http://127.0.0.1:8000/auth/google/login'}>
             <GoogleIcon />
             Continue with Google
           </button>

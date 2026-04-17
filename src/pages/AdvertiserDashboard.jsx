@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getAllBrandsWithStats, getCampaigns, getBillingTransactions } from '../assets/overlaysStore'
 import DownloadReportModal from './DownloadReportModal'
+import { getMe } from '../api/auth'
 import './AdvertiserDashboard.css'
 
 /* ── DEV MODE ── */
@@ -146,7 +147,21 @@ export default function AdvertiserDashboard() {
     '2025':  AGENCY_MONTHLY_2025,
     '2024':  AGENCY_MONTHLY_2024,
   }[chartView] || AGENCY_MONTHLY
-  const user = AGENCY_USER
+  
+  const [user, setUser] = useState(AGENCY_USER)
+
+  useEffect(() => {
+    getMe().then(data => {
+      if (data) {
+        setUser({
+          ...AGENCY_USER,
+          name: data.name || AGENCY_USER.name,
+          email: data.email || AGENCY_USER.email,
+          picture: data.picture || null,
+        })
+      }
+    })
+  }, [])
 
   const handleNav = (id) => {
     if (id === 'campaigns') { navigate('/campaign-manager'); return }
@@ -210,7 +225,11 @@ export default function AdvertiserDashboard() {
             </svg>
           </button>
           <div className="ad-topnav-user">
-            <div className="ad-user-avatar">{user.name[0]}</div>
+            {user.picture ? (
+              <img src={user.picture} alt="Avatar" className="ad-user-avatar" style={{ border: 'none', objectFit: 'cover' }} />
+            ) : (
+              <div className="ad-user-avatar">{user.name ? user.name[0] : 'U'}</div>
+            )}
             <div className="ad-user-info">
               <span className="ad-user-name">{user.name}</span>
               <span className="ad-user-company">{user.agency}</span>
