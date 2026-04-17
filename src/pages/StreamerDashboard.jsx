@@ -433,6 +433,13 @@ export default function StreamerDashboard() {
               <span>Ads on</span>
             </div>
           )}
+          <button className="sd-wallet-btn" title="Wallet">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+              <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+              <path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/>
+            </svg>
+          </button>
           <div className="sd-topnav-user">
             <div className="sd-user-avatar">{user?.name?.[0]}</div>
             <div className="sd-user-info">
@@ -440,7 +447,6 @@ export default function StreamerDashboard() {
               <span className="sd-user-sub">{user?.channel}</span>
             </div>
           </div>
-          <button className="sd-logout" onClick={handleLogout}>Log out</button>
         </div>
       </nav>
 
@@ -448,22 +454,34 @@ export default function StreamerDashboard() {
 
         {/* ══ SIDEBAR ══ */}
         <aside className={`sd-sidebar ${sidebarOpen ? 'open' : 'collapsed'}`}>
-          {NAV_ITEMS.map(item => (
-            <button
-              key={item.id}
-              className={`sd-nav-item ${activePage === item.id ? 'active' : ''} ${item.id === 'stream' ? 'go-live' : ''}`}
-              onClick={() => setActivePage(item.id)}
-            >
-              <span className={`sd-nav-icon ${item.id === 'stream' ? 'live-icon' : ''}`}>{item.icon}</span>
-              {sidebarOpen && <span className="sd-nav-label">{item.label}</span>}
-              {sidebarOpen && item.id === 'requests' && adRequests.length > 0 && (
-                <span className="sd-nav-badge">{adRequests.length}</span>
-              )}
-              {sidebarOpen && item.id === 'stream' && isStreaming && (
-                <span className="sd-nav-live-chip">LIVE</span>
-              )}
+          <div className="sd-sidebar-nav">
+            {NAV_ITEMS.map(item => (
+              <button
+                key={item.id}
+                className={`sd-nav-item ${activePage === item.id ? 'active' : ''} ${item.id === 'stream' ? 'go-live' : ''}`}
+                onClick={() => setActivePage(item.id)}
+              >
+                <span className={`sd-nav-icon ${item.id === 'stream' ? 'live-icon' : ''}`}>{item.icon}</span>
+                {sidebarOpen && <span className="sd-nav-label">{item.label}</span>}
+                {sidebarOpen && item.id === 'requests' && adRequests.length > 0 && (
+                  <span className="sd-nav-badge">{adRequests.length}</span>
+                )}
+                {sidebarOpen && item.id === 'stream' && isStreaming && (
+                  <span className="sd-nav-live-chip">LIVE</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="sd-sidebar-bottom">
+            <button className="sd-sidebar-logout" onClick={handleLogout}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              {sidebarOpen && <span>Log out</span>}
             </button>
-          ))}
+          </div>
         </aside>
 
         {/* ══ MAIN ══ */}

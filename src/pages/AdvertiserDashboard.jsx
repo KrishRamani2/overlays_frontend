@@ -196,6 +196,13 @@ export default function AdvertiserDashboard() {
         </div>
         <div className="ad-topnav-right">
           {DEV_MODE && <span className="ad-dev-chip">Dev Mode</span>}
+          <button className="ad-wallet-btn" title="Wallet">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+              <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+              <path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/>
+            </svg>
+          </button>
           <div className="ad-topnav-user">
             <div className="ad-user-avatar">{user.name[0]}</div>
             <div className="ad-user-info">
@@ -203,7 +210,6 @@ export default function AdvertiserDashboard() {
               <span className="ad-user-company">{user.agency}</span>
             </div>
           </div>
-          <button className="ad-logout" onClick={handleLogout}>Log out</button>
         </div>
       </nav>
 
@@ -211,16 +217,28 @@ export default function AdvertiserDashboard() {
 
         {/* ══ SIDEBAR ══ */}
         <aside className={`ad-sidebar ${sidebarOpen ? 'open' : 'collapsed'}`}>
-          {NAV_ITEMS.map(item => (
-            <button
-              key={item.id}
-              className={`ad-nav-item ${activePage === item.id ? 'active' : ''}`}
-              onClick={() => handleNav(item.id)}
-            >
-              <span className="ad-nav-icon">{item.icon}</span>
-              {sidebarOpen && <span className="ad-nav-label">{item.label}</span>}
+          <div className="ad-sidebar-nav">
+            {NAV_ITEMS.map(item => (
+              <button
+                key={item.id}
+                className={`ad-nav-item ${activePage === item.id ? 'active' : ''}`}
+                onClick={() => handleNav(item.id)}
+              >
+                <span className="ad-nav-icon">{item.icon}</span>
+                {sidebarOpen && <span className="ad-nav-label">{item.label}</span>}
+              </button>
+            ))}
+          </div>
+          <div className="ad-sidebar-bottom">
+            <button className="ad-sidebar-logout" onClick={handleLogout}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              {sidebarOpen && <span>Log out</span>}
             </button>
-          ))}
+          </div>
         </aside>
 
         {/* ══ MAIN CONTENT ══ */}

@@ -70,13 +70,15 @@
 .ad-user-name    { font-size: 0.82rem; font-weight: 500; color: var(--ink); line-height: 1.2; }
 .ad-user-company { font-size: 0.7rem; color: var(--muted); font-weight: 300; }
 
-.ad-logout {
-  font-family: 'Geist', sans-serif; font-size: 0.82rem;
-  color: var(--ink2); background: none; border: none;
-  cursor: pointer; padding: 0.35rem 0.75rem;
-  border-radius: 8px; transition: background 0.15s;
+/* Wallet button */
+.ad-wallet-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid var(--border); background: white;
+  cursor: pointer; color: var(--ink2);
+  transition: all 0.15s; flex-shrink: 0;
 }
-.ad-logout:hover { background: var(--off); }
+.ad-wallet-btn:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
 
 /* ══ BODY ══ */
 .ad-body {
@@ -89,13 +91,41 @@
 .ad-sidebar {
   position: fixed; top: 62px; left: 0; bottom: 0; z-index: 200;
   background: white; border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 0.25rem;
-  padding: 1.25rem 0.75rem;
+  display: flex; flex-direction: column;
+  padding: 0;
   transition: width 0.22s ease;
   overflow: hidden;
 }
 .ad-sidebar.open      { width: 220px; }
-.ad-sidebar.collapsed { width: 60px; padding: 1.25rem 0.5rem; }
+.ad-sidebar.collapsed { width: 60px; }
+
+.ad-sidebar-nav {
+  flex: 1; display: flex; flex-direction: column; gap: 0.25rem;
+  padding: 1.25rem 0.75rem;
+  overflow-y: auto;
+}
+.ad-sidebar.collapsed .ad-sidebar-nav { padding: 1.25rem 0.5rem; }
+
+.ad-sidebar-bottom {
+  padding: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.ad-sidebar.collapsed .ad-sidebar-bottom { padding: 0.5rem; }
+
+.ad-sidebar-logout {
+  display: flex; align-items: center; gap: 0.75rem;
+  width: 100%; padding: 0.6rem 0.85rem;
+  border-radius: 12px; border: none;
+  background: none; cursor: pointer;
+  font-family: 'Geist', sans-serif;
+  font-size: 0.85rem; font-weight: 400;
+  color: var(--muted);
+  transition: all 0.15s;
+}
+.ad-sidebar-logout:hover {
+  background: #FEF2F2; color: #EF4444;
+}
+.ad-sidebar-logout svg { flex-shrink: 0; }
 
 .ad-nav-item {
   display: flex; align-items: center; gap: 0.75rem;

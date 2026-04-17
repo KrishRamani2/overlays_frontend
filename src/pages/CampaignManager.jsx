@@ -412,59 +412,107 @@ export default function CampaignManager() {
   /* ════════════════════════════════════════
      RENDER
   ════════════════════════════════════════ */
+
+  const AD_NAV_ITEMS = [
+    { id: 'overview',  label: 'Overview',         icon: '⊞' },
+    { id: 'campaigns', label: 'Campaign Editor', icon: '◈' },
+    { id: 'billing',   label: 'Billing',          icon: '₹' },
+    { id: 'settings',  label: 'Settings',         icon: '⚙' },
+  ]
+
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+
   return (
     <div className="cm-page" onClick={() => setSelected(null)}>
 
-      {/* ── Sidebar ── */}
-      <aside className="cm-sidebar" onClick={e=>e.stopPropagation()}>
-        <div className="cm-sidebar-header">
-          <a href="/" className="cm-sidebar-logo"><LogoIcon /> Overlays</a>
-          <div className="cm-sidebar-title">Campaigns</div>
-          <button className="cm-add-btn" onClick={initNew}>+</button>
+      {/* ══ TOP NAV ══ */}
+      <nav className="cm-topnav-main">
+        <div className="cm-topnav-left">
+          <button className="cm-hamburger" onClick={() => setSidebarOpen(v => !v)}>
+            <span/><span/><span/>
+          </button>
+          <a href="/" className="cm-topnav-logo"><LogoIcon /> Overlays</a>
+          <span className="cm-topnav-divider"/>
+          <span className="cm-topnav-role">Agency Portal</span>
         </div>
-        <div className="cm-campaign-list">
-          {campaigns.length===0 && <div className="cm-empty-list">No campaigns yet.<br/>Click + to create one.</div>}
-          {campaigns.map(c => (
-            <div key={c.id}
-              className={`cm-c-item ${activeCampaignId===c.id?'active':''}`}
-              onClick={()=>loadCampaign(c)}>
-              <span className="cm-c-name">{c.id}</span>
-              <span className={`cm-c-status cm-status-${c.status}`}>{c.status}</span>
-            </div>
-          ))}
+        <div className="cm-topnav-right-main">
+          <button className="cm-wallet-btn" title="Wallet">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+              <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+              <path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/>
+            </svg>
+          </button>
         </div>
-        <div className="cm-sidebar-footer">
-          <button className="cm-logout-btn" onClick={()=>logout()}>Log out</button>
-        </div>
-      </aside>
+      </nav>
 
-      {/* ── Editor ── */}
-      <div className="cm-editor" onClick={e=>e.stopPropagation()}>
+      <div className="cm-body-wrap">
 
-        {/* Topbar */}
-        <div className="cm-topbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <button
-              onClick={() => navigate('/advertiser-dashboard')}
-              style={{
-                background: 'none', border: '1.5px solid #e2e8f0',
-                borderRadius: '100px', padding: '0.35rem 0.9rem',
-                fontSize: '0.82rem', color: '#64748b',
-                cursor: 'pointer', fontFamily: 'inherit',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { e.target.style.borderColor = '#3B5BFF'; e.target.style.color = '#3B5BFF' }}
-              onMouseLeave={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.color = '#64748b' }}
-            >
-              ← Dashboard
+        {/* ══ SIDEBAR ══ */}
+        <aside className={`cm-nav-sidebar ${sidebarOpen ? 'open' : 'collapsed'}`}>
+          <div className="cm-nav-sidebar-top">
+            {AD_NAV_ITEMS.map(item => (
+              <button
+                key={item.id}
+                className={`cm-nav-item ${item.id === 'campaigns' ? 'active' : ''}`}
+                onClick={() => {
+                  if (item.id === 'overview') navigate('/advertiser-dashboard')
+                  else if (item.id === 'billing') navigate('/advertiser-dashboard?page=billing')
+                  else if (item.id === 'settings') navigate('/advertiser-dashboard?page=settings')
+                }}
+              >
+                <span className="cm-nav-icon">{item.icon}</span>
+                {sidebarOpen && <span className="cm-nav-label">{item.label}</span>}
+              </button>
+            ))}
+          </div>
+          <div className="cm-nav-sidebar-bottom">
+            <button className="cm-nav-logout" onClick={() => logout()}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              {sidebarOpen && <span>Log out</span>}
             </button>
-            <span className="cm-topbar-title">{isEditing ? `Editing: ${campaignId}` : 'New Campaign'}</span>
           </div>
-          <div className="cm-topbar-right">
-            {isEditing && <button className="cm-btn-danger" onClick={deleteCampaign}>Delete</button>}
-            <button className="cm-btn-primary" onClick={handleSubmitClick}>Submit for review</button>
-          </div>
-        </div>
+        </aside>
+
+        {/* ══ MAIN AREA ══ */}
+        <div className="cm-main-area">
+
+          {/* ── Campaign list panel ── */}
+          <aside className="cm-sidebar" onClick={e=>e.stopPropagation()}>
+            <div className="cm-sidebar-header">
+              <div className="cm-sidebar-title">Campaigns</div>
+              <button className="cm-add-btn" onClick={initNew}>+</button>
+            </div>
+            <div className="cm-campaign-list">
+              {campaigns.length===0 && <div className="cm-empty-list">No campaigns yet.<br/>Click + to create one.</div>}
+              {campaigns.map(c => (
+                <div key={c.id}
+                  className={`cm-c-item ${activeCampaignId===c.id?'active':''}`}
+                  onClick={()=>loadCampaign(c)}>
+                  <span className="cm-c-name">{c.id}</span>
+                  <span className={`cm-c-status cm-status-${c.status}`}>{c.status}</span>
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          {/* ── Editor ── */}
+          <div className="cm-editor" onClick={e=>e.stopPropagation()}>
+
+            {/* Topbar */}
+            <div className="cm-topbar">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span className="cm-topbar-title">{isEditing ? `Editing: ${campaignId}` : 'New Campaign'}</span>
+              </div>
+              <div className="cm-topbar-right">
+                {isEditing && <button className="cm-btn-danger" onClick={deleteCampaign}>Delete</button>}
+                <button className="cm-btn-primary" onClick={handleSubmitClick}>Submit for review</button>
+              </div>
+            </div>
 
         <div className="cm-workspace">
 
@@ -831,8 +879,8 @@ export default function CampaignManager() {
                   }}/>
                 )}
 
-              </div>
-            </div>
+              </div>{/* end cm-scaler */}
+            </div>{/* end cm-sim-wrap */}
 
             <div className="cm-preview-hint">
               {hideGrid
@@ -841,18 +889,21 @@ export default function CampaignManager() {
               }
             </div>
 
-          </div>
-        </div>
-      </div>
+          </div>{/* end cm-preview-panel */}
+        </div>{/* end cm-workspace */}
+      </div>{/* end cm-editor */}
+      </div>{/* end cm-main-area */}
+      </div>{/* end cm-body-wrap */}
+
       {showSubmitModal && (
-      <SubmitCampaignModal
-        ads={ads}
-        campaignId={campaignId}
-        brandName={getBrands().find(b => b.id === currentAd.brand)?.name}
-        onConfirm={handleModalConfirm}
-        onClose={() => setShowSubmitModal(false)}
-      />
-    )}
+        <SubmitCampaignModal
+          ads={ads}
+          campaignId={campaignId}
+          brandName={getBrands().find(b => b.id === currentAd.brand)?.name}
+          onConfirm={handleModalConfirm}
+          onClose={() => setShowSubmitModal(false)}
+        />
+      )}
     </div>
   )
 }
