@@ -1,0 +1,36 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+:root {
+  --white: #ffffff;
+  --off: #F7F8FC;
+  --ink: #0E0F14;
+  --ink2: #3B3D47;
+  --muted: #8B8E9A;
+  --blue: #3B5BFF;
+  --blue-soft: #EEF1FF;
+  --border: rgba(14,15,20,0.08);
+  --shadow-sm: 0 2px 12px rgba(14,15,20,0.06);
+  --shadow-md: 0 8px 32px rgba(14,15,20,0.1);
+  --shadow-lg: 0 20px 60px rgba(14,15,20,0.13);
+}
+
+body {
+  font-family: 'Geist', sans-serif;
+  background: var(--white);
+  color: var(--ink);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { text-decoration: none; color: inherit; }
+
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.65s ease, transform 0.65s ease;
+}
+.reveal.in { opacity: 1; transform: none; }
+.d1 { transition-delay: .08s; }
+.d2 { transition-delay: .16s; }
+.d3 { transition-delay: .24s; }

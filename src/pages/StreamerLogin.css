@@ -1,0 +1,238 @@
+.sl-loading {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--white);
+}
+.sl-spinner-lg {
+  width: 32px; height: 32px;
+  border: 2px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: sl-spin 0.7s linear infinite;
+}
+@keyframes sl-spin { to { transform: rotate(360deg); } }
+
+.sl-page {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: var(--white);
+  position: relative; overflow: hidden;
+  padding: 2rem;
+}
+
+.sl-arc {
+  position: absolute;
+  top: -120px; left: 50%; transform: translateX(-50%);
+  width: 820px; height: 620px;
+  background: radial-gradient(
+    ellipse at 50% 30%,
+    #E8ECFF 0%, #F0F4FF 42%, rgba(240,244,255,0) 72%
+  );
+  border-radius: 50%;
+  pointer-events: none; z-index: 0;
+}
+
+.sl-dots {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image: radial-gradient(circle, rgba(59,91,255,0.08) 1px, transparent 1px);
+  background-size: 36px 36px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, black 25%, transparent 80%);
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, black 25%, transparent 80%);
+}
+
+.sl-logo {
+  position: fixed;
+  top: 0; left: 0; right: 0; height: 62px;
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 0 3rem;
+  font-family: 'Geist', sans-serif;
+  font-weight: 600; font-size: 1.05rem;
+  color: var(--ink); letter-spacing: -0.01em;
+  text-decoration: none;
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+}
+
+.sl-card {
+  position: relative; z-index: 10;
+  background: white; border: 1px solid var(--border);
+  border-radius: 24px; padding: 2.8rem;
+  width: 100%; max-width: 420px;
+  box-shadow: var(--shadow-lg);
+  animation: sl-fadeUp 0.55s 0.05s ease both;
+}
+@keyframes sl-fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.sl-card-top { margin-bottom: 1.8rem; }
+
+.sl-eyebrow {
+  font-size: 0.72rem; font-weight: 500;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--blue); margin-bottom: 0.9rem;
+  display: flex; align-items: center; gap: 0.45rem;
+}
+.sl-eyebrow::before {
+  content: ''; width: 16px; height: 1.5px;
+  background: var(--blue); display: block;
+}
+
+.sl-h1 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 3.4rem; font-weight: 600;
+  line-height: 1.0; letter-spacing: -0.02em;
+  color: var(--ink); margin: 0 0 0.8rem;
+}
+.sl-h1 em { font-style: italic; font-weight: 400; }
+
+.sl-sub {
+  font-size: 0.88rem; color: var(--muted);
+  line-height: 1.75; font-weight: 300; margin: 0;
+}
+
+.sl-divider {
+  height: 1px; background: var(--border); margin-bottom: 1.8rem;
+}
+
+.sl-google-btn {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 0.75rem;
+  background: var(--ink); color: white;
+  font-family: 'Geist', sans-serif;
+  font-size: 0.93rem; font-weight: 500;
+  padding: 0.9rem 1.5rem; border-radius: 100px;
+  border: none; cursor: pointer; min-height: 50px;
+  letter-spacing: -0.01em;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.sl-google-btn:hover  { opacity: 0.85; transform: translateY(-1px); }
+.sl-google-btn:active { transform: translateY(0); opacity: 0.9; }
+
+.sl-hint {
+  margin-top: 1.4rem; font-size: 0.8rem;
+  color: var(--muted); text-align: center; font-weight: 300;
+}
+.sl-hint a { color: var(--blue); font-weight: 500; text-decoration: none; }
+.sl-hint a:hover { text-decoration: underline; }
+
+.sl-footer-note {
+  position: relative; z-index: 10;
+  margin-top: 1.8rem; font-size: 0.75rem;
+  color: var(--muted); text-align: center;
+  font-weight: 300; line-height: 1.6;
+}
+.sl-footer-note a {
+  color: var(--ink2); text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.sl-footer-note a:hover { color: var(--ink); }
+
+/* Sign in / sign up separator row */
+.sl-or-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  margin: 1.1rem 0 0;
+}
+.sl-or-line {
+  flex: 1; height: 1px; background: var(--border);
+}
+.sl-or-text {
+  font-size: 0.72rem; color: var(--muted);
+  font-weight: 300; white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+/* ════════════════════════════════════
+   RESPONSIVE
+════════════════════════════════════ */
+
+/* Tablet — 768px and below */
+@media (max-width: 768px) {
+  .sl-page {
+    padding: 5.5rem 1.25rem 2rem;
+    justify-content: flex-start;
+  }
+
+  .sl-logo {
+    padding: 0 1.5rem;
+  }
+
+  .sl-arc {
+    width: 500px; height: 400px;
+    top: -80px;
+  }
+
+  .sl-card {
+    padding: 2rem 1.75rem;
+    border-radius: 20px;
+    max-width: 100%;
+    box-shadow: var(--shadow-md);
+  }
+
+  .sl-h1 {
+    font-size: 2.8rem;
+  }
+}
+
+/* Mobile — 480px and below */
+@media (max-width: 480px) {
+  .sl-page {
+    padding: 5rem 1rem 1.5rem;
+  }
+
+  .sl-logo {
+    padding: 0 1.25rem;
+    font-size: 0.95rem;
+  }
+
+  .sl-card {
+    padding: 1.75rem 1.35rem;
+    border-radius: 18px;
+    /* On very small screens, remove the card border/shadow
+       so it feels like a native screen instead of a floating box */
+    border: none;
+    box-shadow: none;
+    background: transparent;
+  }
+
+  .sl-h1 {
+    font-size: 2.4rem;
+  }
+
+  .sl-sub {
+    font-size: 0.85rem;
+  }
+
+  .sl-google-btn {
+    font-size: 0.9rem;
+    padding: 0.85rem 1.25rem;
+    min-height: 48px;
+  }
+
+  .sl-or-text {
+    font-size: 0.68rem;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .sl-footer-note {
+    margin-top: 1.2rem;
+    font-size: 0.72rem;
+    padding: 0 0.5rem;
+  }
+}
+
+/* Very small — 360px and below */
+@media (max-width: 360px) {
+  .sl-h1 {
+    font-size: 2.1rem;
+  }
+
+  .sl-card {
+    padding: 1.5rem 1rem;
+  }
+}

@@ -1,0 +1,123 @@
+.al-loading {
+  min-height: 100vh; display: flex;
+  align-items: center; justify-content: center; background: var(--white);
+}
+.al-spinner {
+  width: 32px; height: 32px;
+  border: 2px solid var(--border); border-top-color: var(--blue);
+  border-radius: 50%; animation: al-spin 0.7s linear infinite;
+}
+@keyframes al-spin { to { transform: rotate(360deg); } }
+
+.al-page {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: var(--white); position: relative; overflow: hidden; padding: 2rem;
+}
+
+.al-arc {
+  position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
+  width: 820px; height: 620px;
+  background: radial-gradient(ellipse at 50% 30%, #E8ECFF 0%, #F0F4FF 42%, rgba(240,244,255,0) 72%);
+  border-radius: 50%; pointer-events: none; z-index: 0;
+}
+.al-dots {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image: radial-gradient(circle, rgba(59,91,255,0.08) 1px, transparent 1px);
+  background-size: 36px 36px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, black 25%, transparent 80%);
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, black 25%, transparent 80%);
+}
+
+.al-logo {
+  position: fixed; top: 0; left: 0; right: 0; height: 62px;
+  display: flex; align-items: center; gap: 0.55rem; padding: 0 3rem;
+  font-family: 'Geist', sans-serif; font-weight: 600; font-size: 1.05rem;
+  color: var(--ink); text-decoration: none;
+  background: rgba(255,255,255,0.82); backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border); z-index: 100;
+}
+
+.al-card {
+  position: relative; z-index: 10; background: white;
+  border: 1px solid var(--border); border-radius: 24px; padding: 2.8rem;
+  width: 100%; max-width: 440px; box-shadow: var(--shadow-lg);
+  animation: al-fadeUp 0.55s 0.05s ease both;
+}
+@keyframes al-fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.al-card-top { margin-bottom: 1.8rem; }
+
+.al-eyebrow {
+  font-size: 0.72rem; font-weight: 500; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--blue); margin-bottom: 0.9rem;
+  display: flex; align-items: center; gap: 0.45rem;
+}
+.al-eyebrow::before {
+  content: ''; width: 16px; height: 1.5px; background: var(--blue); display: block;
+}
+
+.al-h1 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 3.2rem; font-weight: 600;
+  line-height: 1.0; letter-spacing: -0.02em;
+  color: var(--ink); margin: 0 0 0.8rem;
+}
+.al-h1 em { font-style: italic; font-weight: 400; }
+
+.al-sub {
+  font-size: 0.88rem; color: var(--muted);
+  line-height: 1.75; font-weight: 300; margin: 0;
+}
+
+.al-divider { height: 1px; background: var(--border); margin-bottom: 1.5rem; }
+
+.al-error {
+  font-size: 0.83rem; color: #DC2626;
+  padding: 0.65rem 1rem; background: #FEF2F2;
+  border: 1px solid #FECACA; border-radius: 10px;
+  margin-bottom: 1rem; line-height: 1.5;
+}
+
+.al-google-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center;
+  gap: 0.75rem; background: var(--ink); color: white;
+  font-family: 'Geist', sans-serif; font-size: 0.93rem; font-weight: 500;
+  padding: 0.9rem 1.5rem; border-radius: 100px; border: none;
+  cursor: pointer; min-height: 50px; letter-spacing: -0.01em;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.al-google-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+
+.al-or-row {
+  display: flex; align-items: center; gap: 0.75rem; margin: 1.1rem 0 0;
+}
+.al-or-line { flex: 1; height: 1px; background: var(--border); }
+.al-or-text {
+  font-size: 0.72rem; color: var(--muted); font-weight: 300;
+  white-space: nowrap; letter-spacing: 0.01em;
+}
+
+.al-hint {
+  margin-top: 1.4rem; font-size: 0.8rem;
+  color: var(--muted); text-align: center; font-weight: 300;
+}
+.al-hint a { color: var(--blue); font-weight: 500; text-decoration: none; }
+.al-hint a:hover { text-decoration: underline; }
+
+.al-footer-note {
+  position: relative; z-index: 10; margin-top: 1.8rem;
+  font-size: 0.75rem; color: var(--muted); text-align: center;
+  font-weight: 300; line-height: 1.6;
+}
+.al-footer-note a { color: var(--ink2); text-decoration: underline; text-underline-offset: 2px; }
+
+@media (max-width: 480px) {
+  .al-page { padding: 5rem 1rem 1.5rem; justify-content: flex-start; }
+  .al-logo { padding: 0 1.25rem; }
+  .al-card { padding: 1.75rem 1.35rem; border: none; box-shadow: none; background: transparent; }
+  .al-h1   { font-size: 2.6rem; }
+}

@@ -1,0 +1,259 @@
+/* SubmitCampaignModal.css */
+
+.scm-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem;
+}
+
+.scm-modal {
+  background: white; border-radius: 24px;
+  width: 100%; max-width: 620px;
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.22);
+  display: flex; flex-direction: column;
+  font-family: 'Geist', sans-serif;
+}
+
+/* ── Header ── */
+.scm-header {
+  display: flex; align-items: flex-start;
+  justify-content: space-between;
+  padding: 1.75rem 1.75rem 0;
+  margin-bottom: 1.25rem;
+}
+.scm-eyebrow {
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: #3B5BFF; margin-bottom: 0.3rem;
+}
+.scm-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.75rem; font-weight: 600;
+  letter-spacing: -0.02em; margin: 0 0 0.4rem;
+}
+.scm-brand-chip {
+  display: inline-block;
+  font-size: 0.72rem; font-weight: 500;
+  background: #EEF2FF; color: #3B5BFF;
+  border: 1px solid #C7D2FE;
+  padding: 0.2rem 0.65rem; border-radius: 100px;
+}
+.scm-close {
+  background: none; border: none; cursor: pointer;
+  font-size: 1rem; color: #9CA3AF;
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 0.25rem;
+  transition: background 0.15s, color 0.15s;
+}
+.scm-close:hover { background: #F3F4F6; color: #111; }
+
+/* ── Sections ── */
+.scm-section { padding: 0 1.75rem; margin-bottom: 1.25rem; }
+.scm-section-label {
+  font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: #6B7280; margin-bottom: 0.75rem;
+}
+.scm-divider {
+  height: 1px; background: #F3F4F6;
+  margin: 0 1.75rem 1.25rem;
+}
+
+/* ── Ad variants ── */
+.scm-variants-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.scm-variant-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #F9FAFB; border: 1px solid #E5E7EB;
+  border-radius: 12px;
+}
+.scm-variant-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #EEF2FF; color: #3B5BFF;
+  font-size: 0.72rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.scm-variant-info { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; min-width: 0; }
+.scm-variant-name { font-size: 0.87rem; font-weight: 500; color: #111827; }
+.scm-variant-meta { font-size: 0.72rem; color: #9CA3AF; font-weight: 300; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scm-variant-type-badge {
+  font-size: 0.65rem; font-weight: 600;
+  background: #F3F4F6; color: #6B7280;
+  border: 1px solid #E5E7EB;
+  padding: 0.15rem 0.5rem; border-radius: 100px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+/* ── Tier grid ── */
+.scm-tier-grid {
+  display: grid; grid-template-columns: repeat(5,1fr); gap: 0.5rem;
+}
+.scm-tier-card {
+  display: flex; flex-direction: column; gap: 0.2rem;
+  padding: 0.75rem 0.5rem; border-radius: 12px;
+  border: 1.5px solid #E5E7EB; background: #F9FAFB;
+  cursor: pointer; text-align: center;
+  transition: all 0.15s; font-family: 'Geist', sans-serif;
+}
+.scm-tier-card:hover { border-color: #3B5BFF; background: #EEF2FF; }
+.scm-tier-card.active {
+  border-color: #3B5BFF; background: #EEF2FF;
+  box-shadow: 0 0 0 3px rgba(59,91,255,0.12);
+}
+.scm-tier-label {
+  font-size: 0.82rem; font-weight: 700; color: #111827;
+  display: block;
+}
+.scm-tier-desc {
+  font-size: 0.62rem; color: #6B7280; font-weight: 300;
+  line-height: 1.3; display: block;
+}
+.scm-tier-mult {
+  font-size: 0.65rem; font-weight: 600; color: #3B5BFF;
+  display: block; margin-top: 0.2rem;
+}
+
+/* ── Exclusive toggle ── */
+.scm-exclusive-row {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 1rem;
+  padding: 1rem; border-radius: 14px;
+  border: 1.5px solid #E5E7EB; background: #F9FAFB;
+}
+.scm-exclusive-info { display: flex; flex-direction: column; gap: 0.3rem; }
+.scm-exclusive-title { font-size: 0.9rem; font-weight: 500; color: #111827; }
+.scm-exclusive-desc  { font-size: 0.78rem; color: #6B7280; font-weight: 300; line-height: 1.5; }
+
+.scm-toggle {
+  width: 44px; height: 24px; border-radius: 100px;
+  background: #D1D5DB; border: none; cursor: pointer;
+  position: relative; flex-shrink: 0;
+  transition: background 0.2s;
+}
+.scm-toggle.on { background: #3B5BFF; }
+.scm-toggle-knob {
+  position: absolute; top: 3px; left: 3px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  transition: transform 0.2s;
+  display: block;
+}
+.scm-toggle.on .scm-toggle-knob { transform: translateX(20px); }
+
+/* ── Duration ── */
+.scm-duration-pills {
+  display: flex; flex-wrap: wrap; gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+.scm-duration-pill {
+  font-family: 'Geist', sans-serif;
+  font-size: 0.82rem; font-weight: 400;
+  padding: 0.4rem 1rem; border-radius: 100px;
+  border: 1.5px solid #E5E7EB; background: #F9FAFB;
+  color: #374151; cursor: pointer;
+  transition: all 0.15s;
+}
+.scm-duration-pill:hover { border-color: #3B5BFF; color: #3B5BFF; }
+.scm-duration-pill.active {
+  border-color: #3B5BFF; background: #EEF2FF; color: #3B5BFF; font-weight: 500;
+}
+
+.scm-custom-days {
+  display: flex; align-items: center; gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.scm-custom-label { font-size: 0.85rem; color: #6B7280; }
+.scm-duration-meta {
+  font-size: 0.78rem; color: #6B7280; font-weight: 300;
+  margin-top: 0.4rem;
+}
+
+/* ── Budget ── */
+.scm-budget-row {
+  display: flex; align-items: flex-end; gap: 0.75rem;
+}
+.scm-budget-field { display: flex; flex-direction: column; gap: 0.35rem; flex: 1; }
+.scm-budget-label { font-size: 0.72rem; font-weight: 500; color: #6B7280; }
+.scm-budget-sep { font-size: 1.1rem; color: #D1D5DB; padding-bottom: 0.7rem; }
+.scm-budget-input-wrap {
+  display: flex; align-items: center;
+  border: 1.5px solid #E5E7EB; border-radius: 10px;
+  background: #F9FAFB; overflow: hidden;
+  transition: border-color 0.15s;
+}
+.scm-budget-input-wrap:focus-within { border-color: #3B5BFF; }
+.scm-budget-currency {
+  padding: 0 0.6rem 0 0.85rem;
+  font-size: 0.85rem; color: #6B7280; font-weight: 400;
+  flex-shrink: 0;
+}
+.scm-budget-input {
+  border: none !important; background: transparent !important;
+  padding: 0.65rem 0.75rem 0.65rem 0 !important;
+  border-radius: 0 !important;
+  font-size: 0.9rem; font-weight: 500; color: #111827;
+  width: 100%; outline: none;
+}
+
+/* ── Shared input ── */
+.scm-input {
+  background: #F9FAFB; border: 1.5px solid #E5E7EB;
+  border-radius: 10px; padding: 0.65rem 0.9rem;
+  font-family: 'Geist', sans-serif; font-size: 0.87rem; color: #111827;
+  outline: none; transition: border-color 0.15s;
+  width: 80px;
+}
+.scm-input:focus { border-color: #3B5BFF; }
+
+/* ── Estimate ── */
+.scm-estimate-box {
+  margin: 0 1.75rem 1.25rem;
+  background: #F0F4FF; border: 1.5px solid #C7D2FE;
+  border-radius: 16px; padding: 1.1rem 1.25rem;
+}
+.scm-estimate-label {
+  font-size: 0.7rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: #3B5BFF; margin-bottom: 0.3rem;
+}
+.scm-estimate-range {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.6rem; font-weight: 600;
+  color: #111827; letter-spacing: -0.02em;
+}
+.scm-estimate-meta {
+  font-size: 0.72rem; color: #6B7280; font-weight: 300; margin-top: 0.2rem;
+}
+
+/* ── Actions ── */
+.scm-actions {
+  display: flex; gap: 0.75rem; justify-content: flex-end;
+  padding: 1.25rem 1.75rem 1.75rem;
+  border-top: 1px solid #F3F4F6;
+}
+.scm-btn-ghost {
+  background: none; border: 1.5px solid #E5E7EB;
+  color: #374151; font-family: 'Geist', sans-serif;
+  font-size: 0.87rem; font-weight: 400;
+  padding: 0.65rem 1.3rem; border-radius: 100px;
+  cursor: pointer; transition: all 0.15s;
+}
+.scm-btn-ghost:hover { border-color: #374151; }
+.scm-btn-primary {
+  background: #3B5BFF; color: white;
+  font-family: 'Geist', sans-serif; font-size: 0.87rem; font-weight: 500;
+  padding: 0.65rem 1.5rem; border-radius: 100px; border: none;
+  cursor: pointer; transition: opacity 0.15s, transform 0.15s;
+  white-space: nowrap;
+}
+.scm-btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+
+/* ── Scrollbar ── */
+.scm-modal::-webkit-scrollbar { width: 6px; }
+.scm-modal::-webkit-scrollbar-track { background: transparent; }
+.scm-modal::-webkit-scrollbar-thumb { background: #E5E7EB; border-radius: 3px; }
