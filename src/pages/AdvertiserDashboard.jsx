@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getAllBrandsWithStats, getCampaigns, getBillingTransactions } from '../assets/overlaysStore'
 import './AdvertiserDashboard.css'
 
@@ -127,7 +127,11 @@ function TierBadge({ tier }) {
 ════════════════════════════════════════ */
 export default function AdvertiserDashboard() {
   const navigate = useNavigate()
-  const [activePage, setActivePage]         = useState('overview')
+  const [searchParams] = useSearchParams()
+  const [activePage, setActivePage]         = useState(() => {
+    const page = searchParams.get('page')
+    return (page && ['overview','billing','settings'].includes(page)) ? page : 'overview'
+  })
   const [sidebarOpen, setSidebarOpen]       = useState(true)
   const [selectedBrand, setSelectedBrand]   = useState(null) // brand id or null
   const [billingFilters, setBillingFilters] = useState({ tier: 'All', brand: 'All' })

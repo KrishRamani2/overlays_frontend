@@ -132,6 +132,24 @@
   display: flex; align-items: center; justify-content: space-between;
   gap: 0.75rem;
 }
+.cm-sidebar-collapsed {
+  width: 56px !important;
+}
+.cm-sidebar-collapsed .cm-sidebar-title {
+  display: none;
+}
+.cm-sidebar-collapsed .cm-add-btn {
+  width: 26px; height: 26px; font-size: 1rem;
+}
+.cm-collapse-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid var(--border); background: white;
+  font-size: 1.1rem; cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  color: var(--ink2); transition: all 0.15s; flex-shrink: 0;
+  line-height: 1;
+}
+.cm-collapse-btn:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
 .cm-sidebar-title {
   font-size: 0.72rem; font-weight: 500; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--muted);

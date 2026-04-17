@@ -421,6 +421,7 @@ export default function CampaignManager() {
   ]
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [campaignListOpen, setCampaignListOpen] = useState(true)
 
   return (
     <div className="cm-page" onClick={() => setSelected(null)}>
@@ -481,23 +482,30 @@ export default function CampaignManager() {
         {/* ══ MAIN AREA ══ */}
         <div className="cm-main-area">
 
-          {/* ── Campaign list panel ── */}
-          <aside className="cm-sidebar" onClick={e=>e.stopPropagation()}>
+          {/* ── Campaign list panel (collapsible) ── */}
+          <aside className={`cm-sidebar ${campaignListOpen ? '' : 'cm-sidebar-collapsed'}`} onClick={e=>e.stopPropagation()}>
             <div className="cm-sidebar-header">
               <div className="cm-sidebar-title">Campaigns</div>
-              <button className="cm-add-btn" onClick={initNew}>+</button>
+              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                <button className="cm-add-btn" onClick={initNew}>+</button>
+                <button className="cm-collapse-btn" onClick={() => setCampaignListOpen(v => !v)} title={campaignListOpen ? 'Collapse' : 'Expand'}>
+                  {campaignListOpen ? '‹' : '›'}
+                </button>
+              </div>
             </div>
-            <div className="cm-campaign-list">
-              {campaigns.length===0 && <div className="cm-empty-list">No campaigns yet.<br/>Click + to create one.</div>}
-              {campaigns.map(c => (
-                <div key={c.id}
-                  className={`cm-c-item ${activeCampaignId===c.id?'active':''}`}
-                  onClick={()=>loadCampaign(c)}>
-                  <span className="cm-c-name">{c.id}</span>
-                  <span className={`cm-c-status cm-status-${c.status}`}>{c.status}</span>
-                </div>
-              ))}
-            </div>
+            {campaignListOpen && (
+              <div className="cm-campaign-list">
+                {campaigns.length===0 && <div className="cm-empty-list">No campaigns yet.<br/>Click + to create one.</div>}
+                {campaigns.map(c => (
+                  <div key={c.id}
+                    className={`cm-c-item ${activeCampaignId===c.id?'active':''}`}
+                    onClick={()=>loadCampaign(c)}>
+                    <span className="cm-c-name">{c.id}</span>
+                    <span className={`cm-c-status cm-status-${c.status}`}>{c.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </aside>
 
           {/* ── Editor ── */}
@@ -531,6 +539,16 @@ export default function CampaignManager() {
             </div>
 
             <div className="cm-field">
+              <label className="cm-field-label">Brand</label>
+              <select className="cm-select" value={currentAd.brand} onChange={e=>updateAd({brand:e.target.value})}>
+                <option value="">Select a brand</option>
+                {brands.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="cm-field">
               <label className="cm-field-label">Campaign ID</label>
               <input className="cm-input" placeholder="e.g. brand_summer_01"
                 value={campaignId} onChange={e=>setCampaignId(e.target.value)} disabled={isEditing}/>
@@ -540,16 +558,6 @@ export default function CampaignManager() {
               <label className="cm-field-label">Name visible to streamer</label>
               <input className="cm-input" placeholder="e.g. Summer Campaign"
                 value={currentAd.visibleName} onChange={e=>updateAd({visibleName:e.target.value})}/>
-            </div>
-
-            <div className="cm-field">
-              <label className="cm-field-label">Brand</label>
-              <select className="cm-select" value={currentAd.brand} onChange={e=>updateAd({brand:e.target.value})}>
-                <option value="">Select a brand</option>
-                {brands.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
             </div>
 
             <div className="cm-field">
