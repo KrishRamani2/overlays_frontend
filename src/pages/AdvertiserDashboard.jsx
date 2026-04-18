@@ -14,7 +14,8 @@ const AGENCY_USER = {
   email: '',
   id: '',
   picture: '',
-  agency: 'PixelMosaic Agency',
+  company_name: 'Loading...',
+  active: true,
 }
 
 const AGENCY_MONTHLY = [
@@ -159,27 +160,88 @@ export default function AdvertiserDashboard() {
     if (!id) return;
     getAdvertiserMe(id).then(data => {
       if (data) {
-        setUser(prev => ({
-          ...prev,
+        setUser({
           name: data.name || 'Advertiser',
           email: data.email || '',
           picture: data.picture || null,
           id: data.id || null,
-        }))
+          company_name: data.company_name || 'My Company',
+          active: data.active !== false
+        })
       } else {
         setUser(prev => ({ ...prev, name: 'Advertiser' }))
       }
-    })
+    }).catch(err => console.error('Failed to fetch user profile', err))
+  }, [id])
 
-    fetch(`http://localhost:8000/api/company/${id}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.name) {
-          setUser(prev => ({ ...prev, agency: data.name }))
-        }
-      })
-      .catch(err => console.error('Failed to fetch company info', err))
-  }, [])
+  const saveSettings = async (newData) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/accounts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(newData)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(prev => ({ 
+          ...prev, 
+          name: data.name,
+          email: data.email,
+          company_name: data.company_name,
+          active: data.active
+        }));
+        alert('Settings saved successfully!');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save settings');
+    }
+  }
+
+  const deleteAccount = async () => {
+    if (!window.confirm('Are you sure you want to permanently delete your account? This action cannot be undone.')) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/accounts/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (res.ok) {
+        logoutAdvertiser();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete account');
+    }
+  }
+
+  const deactivateAccount = async () => {
+    if (!window.confirm('Are you sure you want to deactivate your account?')) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/accounts/${id}/deactivate`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(prev => ({ ...prev, active: false }));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to deactivate account');
+    }
+  }
+
+  const [settingsForm, setSettingsForm] = useState({ name: '', email: '', company_name: '' });
+  useEffect(() => {
+    if (user.id) {
+      setSettingsForm({
+        name: user.name,
+        email: user.email,
+        company_name: user.company_name
+      });
+    }
+  }, [user]);
 
   const handleNav = (navId) => {
     if (navId === 'campaigns') { navigate(`/campaign-manager/${id || 'demo-id'}`); return }
@@ -228,6 +290,23 @@ export default function AdvertiserDashboard() {
     const a    = document.createElement('a'); a.href = url; a.download = 'billing.csv'; a.click()
   }
 
+  if (user.active === false) {
+    return (
+      <div className="ad-deactivated-overlay">
+        <div className="ad-deactivated-card">
+          <h1>Account Deactivated</h1>
+          <p>
+            Your account has been deactivated. All operations for this company are currently suspended. 
+            Please contact support if you believe this is an error.
+          </p>
+          <button className="ad-deactivated-btn" onClick={handleLogout}>
+            Log Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="ad-page">
 
@@ -258,7 +337,7 @@ export default function AdvertiserDashboard() {
             )}
             <div className="ad-user-info">
               <span className="ad-user-name">{user.name}</span>
-              <span className="ad-user-company">{user.agency}</span>
+              <span className="ad-user-company">{user.company_name}</span>
             </div>
           </div>
         </div>
@@ -893,21 +972,41 @@ export default function AdvertiserDashboard() {
                   <div className="ad-card-header">
                     <div>
                       <div className="ad-eyebrow">Profile</div>
-                      <h2 className="ad-card-title">Agency <em>info</em></h2>
+                      <h2 className="ad-card-title">{isSingleBrand ? 'Brand' : 'Agency'} <em>info</em></h2>
                     </div>
                   </div>
                   <div className="ad-settings-fields">
-                    {[
-                      { label: 'Full name',    value: user.name   },
-                      { label: 'Email',        value: user.email  },
-                      { label: 'Agency name',  value: user.agency },
-                    ].map(f => (
-                      <div key={f.label} className="ad-settings-field">
-                        <label className="ad-settings-label">{f.label}</label>
-                        <input className="ad-settings-input" defaultValue={f.value} />
-                      </div>
-                    ))}
-                    <button className="ad-btn-primary" style={{ marginTop: '0.75rem' }}>Save changes</button>
+                    <div className="ad-settings-field">
+                      <label className="ad-settings-label">Full name</label>
+                      <input 
+                        className="ad-settings-input" 
+                        value={settingsForm.name} 
+                        onChange={e => setSettingsForm({...settingsForm, name: e.target.value})}
+                      />
+                    </div>
+                    <div className="ad-settings-field">
+                      <label className="ad-settings-label">Email</label>
+                      <input 
+                        className="ad-settings-input" 
+                        value={settingsForm.email} 
+                        onChange={e => setSettingsForm({...settingsForm, email: e.target.value})}
+                      />
+                    </div>
+                    <div className="ad-settings-field">
+                      <label className="ad-settings-label">Company name</label>
+                      <input 
+                        className="ad-settings-input" 
+                        value={settingsForm.company_name} 
+                        onChange={e => setSettingsForm({...settingsForm, company_name: e.target.value})}
+                      />
+                    </div>
+                    <button 
+                      className="ad-btn-primary" 
+                      style={{ marginTop: '0.75rem' }}
+                      onClick={() => saveSettings(settingsForm)}
+                    >
+                      Save changes
+                    </button>
                   </div>
                 </div>
 
@@ -999,11 +1098,11 @@ export default function AdvertiserDashboard() {
                     </div>
                   </div>
                   <p className="ad-danger-desc">
-                    Permanently delete your agency account and all brand & campaign data. This cannot be undone.
+                    Permanently delete your account and all brand & campaign data. This cannot be undone.
                   </p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <button className="ad-btn-danger-outline">Delete all data</button>
-                    <button className="ad-btn-danger-outline">Deactivate account</button>
+                    <button className="ad-btn-danger-outline" onClick={deleteAccount}>Delete account</button>
+                    <button className="ad-btn-danger-outline" onClick={deactivateAccount}>Deactivate account</button>
                   </div>
                 </div>
 

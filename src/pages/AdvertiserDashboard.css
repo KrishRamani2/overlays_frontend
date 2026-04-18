@@ -653,3 +653,49 @@
   background: var(--blue); border-color: var(--blue);
   color: white; font-weight: 500;
 }
+
+/* ── DEACTIVATED OVERLAY ── */
+.ad-deactivated-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  padding: 2rem;
+}
+
+.ad-deactivated-card {
+  background: white;
+  padding: 3rem;
+  border-radius: 24px;
+  text-align: center;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  animation: ad-bounce-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes ad-bounce-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.ad-deactivated-card h1 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 2.5rem; margin-bottom: 1rem; color: #EF4444;
+}
+
+.ad-deactivated-card p {
+  color: var(--muted); line-height: 1.6; margin-bottom: 2rem;
+}
+
+.ad-deactivated-btn {
+  background: var(--ink); color: white;
+  padding: 0.8rem 2rem; border-radius: 100px;
+  border: none; cursor: pointer; font-weight: 500;
+  transition: all 0.2s;
+}
+
+.ad-deactivated-btn:hover {
+  background: #000; transform: translateY(-2px);
+}
