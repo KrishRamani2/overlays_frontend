@@ -133,6 +133,8 @@ export default function AdvertiserDashboard() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const companyType = searchParams.get('type') || 'agency' // 'single' or 'agency'
+  const isSingleBrand = companyType === 'single'
   const [activePage, setActivePage]         = useState(() => {
     const page = searchParams.get('page')
     return (page && ['overview','billing','settings'].includes(page)) ? page : 'overview'
@@ -184,9 +186,9 @@ export default function AdvertiserDashboard() {
     setActivePage(navId)
     setSelectedBrand(null)
     if (navId === 'overview') {
-      navigate(`/advertiser-dashboard/${id || 'demo-id'}`, { replace: true })
+      navigate(`/advertiser-dashboard/${id || 'demo-id'}?type=${companyType}`, { replace: true })
     } else {
-      navigate(`/advertiser-dashboard/${id || 'demo-id'}?page=${navId}`, { replace: true })
+      navigate(`/advertiser-dashboard/${id || 'demo-id'}?type=${companyType}&page=${navId}`, { replace: true })
     }
   }
 
@@ -201,6 +203,7 @@ export default function AdvertiserDashboard() {
   const totalStreams   = BRANDS.reduce((s, b) => s + b.streams, 0)
   const totalCampaigns = BRANDS.reduce((s, b) => s + b.campaigns, 0)
   const totalBudgetAllocated = BRANDS.reduce((s, b) => s + (b.budgetAllocated || b.spendRaw * 1.4), 0)
+  const totalBudgetRemaining = totalBudgetAllocated - totalSpend
 
   const activeBrand    = selectedBrand ? BRANDS.find(b => b.id === selectedBrand) : null
   const brandCampaigns = selectedBrand ? getCampaigns(selectedBrand) : []
@@ -236,7 +239,7 @@ export default function AdvertiserDashboard() {
           </button>
           <a href="/" className="ad-topnav-logo"><LogoIcon /> Overlays</a>
           <span className="ad-topnav-divider"/>
-          <span className="ad-topnav-role">Agency Portal</span>
+          <span className="ad-topnav-role">{isSingleBrand ? 'Brand Portal' : 'Agency Portal'}</span>
         </div>
         <div className="ad-topnav-right">
           {DEV_MODE && <span className="ad-dev-chip">Dev Mode</span>}
@@ -292,8 +295,140 @@ export default function AdvertiserDashboard() {
         {/* ══ MAIN CONTENT ══ */}
         <main className="ad-main">
 
+          {/* ── OVERVIEW — Single Brand Dashboard ── */}
+          {activePage === 'overview' && isSingleBrand && (() => {
+            const brand = BRANDS[0]
+            if (!brand) return null
+            const brandBudget = brand.spendRaw * 1.4
+            const brandRemaining = brandBudget - brand.spendRaw
+            const brandCamps = getCampaigns(brand.id)
+            return (
+              <div className="ad-content">
+                <div className="ad-page-header">
+                  <div>
+                    <div className="ad-eyebrow">Brand Dashboard</div>
+                    <h1 className="ad-page-title">Good morning, <em>{user.name.split(' ')[0]}.</em></h1>
+                  </div>
+                  <div className="ad-page-actions">
+                    <button className="ad-btn-ghost" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>+ New Campaign</button>
+                  </div>
+                </div>
+
+                {/* Brand stats with budget */}
+                <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+                  {[
+                    { label: 'Total spent', value: brand.totalSpend, sub: 'All time' },
+                    { label: 'Budget remaining', value: `₹${(brandRemaining / 1000).toFixed(0)}K`, sub: `of ₹${(brandBudget / 1000).toFixed(0)}K allocated` },
+                    { label: 'Live streams', value: brand.streams, sub: 'Total streams', highlight: true },
+                    { label: 'Campaigns', value: brand.campaigns, sub: 'Active & completed' },
+                  ].map((s, i) => (
+                    <div key={i} className={`ad-stat-card ${s.highlight ? 'highlight' : ''}`}>
+                      <div className="ad-stat-value">{s.value}</div>
+                      <div className="ad-stat-label">{s.label}</div>
+                      <div className="ad-stat-sub">{s.sub}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Budget progress bar */}
+                <div className="ad-card" style={{ marginBottom: '1.25rem' }}>
+                  <div className="ad-card-header">
+                    <div>
+                      <div className="ad-eyebrow">Budget</div>
+                      <h2 className="ad-card-title">Spend <em>overview</em></h2>
+                    </div>
+                    <span className="ad-earnings-total">₹{brandRemaining.toLocaleString()} remaining</span>
+                  </div>
+                  <div className="ad-brand-bar-track" style={{ height: '8px', borderRadius: '4px' }}>
+                    <div className="ad-brand-bar-fill" style={{
+                      width: `${(brand.spendRaw / brandBudget * 100).toFixed(0)}%`,
+                      background: '#3B5BFF', borderRadius: '4px', height: '8px'
+                    }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '.5rem', fontSize: '.78rem', color: '#64748b' }}>
+                    <span>₹{brand.spendRaw.toLocaleString()} spent</span>
+                    <span>₹{brandBudget.toLocaleString()} total budget</span>
+                  </div>
+                </div>
+
+                {/* Spend chart */}
+                <div className="ad-card" style={{ marginBottom: '1.25rem' }}>
+                  <div className="ad-card-header">
+                    <div>
+                      <div className="ad-eyebrow">Monthly Spend</div>
+                      <h2 className="ad-card-title">Spend <em>trend</em></h2>
+                    </div>
+                    <span className="ad-earnings-total">₹{AGENCY_MONTHLY[AGENCY_MONTHLY.length - 1].amount.toLocaleString()} this month</span>
+                  </div>
+                  <EarningsChart data={AGENCY_MONTHLY} />
+                </div>
+
+                {/* Campaign table */}
+                <div className="ad-card">
+                  <div className="ad-card-header">
+                    <div>
+                      <div className="ad-eyebrow">Campaigns</div>
+                      <h2 className="ad-card-title">All <em>campaigns</em></h2>
+                    </div>
+                    <button className="ad-btn-ghost ad-btn-sm" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
+                      Manage →
+                    </button>
+                  </div>
+                  <div className="ad-table-wrap">
+                    <div className="ad-status-tabs">
+                      {['all','pending','live','ended','rejected'].map(s => (
+                        <button
+                          key={s}
+                          className={`ad-status-tab ${brandStatusFilter === s ? 'active' : ''}`}
+                          onClick={() => setBrandStatusFilter(s)}
+                        >
+                          {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
+                          <span className="ad-status-tab-count">
+                            {s === 'all' ? brandCamps.length : brandCamps.filter(c => c.status === s).length}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <table className="ad-table">
+                      <thead>
+                        <tr>
+                          <th>Campaign</th><th>Status</th><th>Budget</th><th>Spent</th><th>Tier</th><th>Duration</th><th>Streamers</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {brandCamps
+                          .filter(c => brandStatusFilter === 'all' || c.status === brandStatusFilter)
+                          .map(c => (
+                            <tr key={c.id} className="ad-table-row" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
+                              <td><span className="ad-table-name">{c.name}</span><span className="ad-table-id">{c.id}</span></td>
+                              <td><StatusBadge status={c.status} /></td>
+                              <td>{c.budgetMax ? `₹${c.budgetMax.toLocaleString('en-IN')}` : c.spend ? `₹${(c.spend * 1.4).toLocaleString('en-IN')}` : '—'}</td>
+                              <td>
+                                <div className="ad-spend-cell">
+                                  <span>{c.spend ? `₹${c.spend.toLocaleString('en-IN')}` : '—'}</span>
+                                  {c.budgetMax && c.spend > 0 && (
+                                    <div className="ad-mini-bar-track"><div className="ad-mini-bar-fill" style={{ width: `${Math.min((c.spend / c.budgetMax) * 100, 100)}%` }}/></div>
+                                  )}
+                                </div>
+                              </td>
+                              <td>{c.tier ? <TierBadge tier={c.tier} /> : '—'}</td>
+                              <td className="ad-muted">{c.daysLive ? `${c.daysLive}d` : '—'}</td>
+                              <td>{c.streamers || '—'}</td>
+                            </tr>
+                          ))}
+                        {brandCamps.filter(c => brandStatusFilter === 'all' || c.status === brandStatusFilter).length === 0 && (
+                          <tr><td colSpan={7} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No {brandStatusFilter} campaigns.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* ── OVERVIEW — Agency Home ── */}
-          {activePage === 'overview' && !selectedBrand && (
+          {activePage === 'overview' && !isSingleBrand && !selectedBrand && (
             <div className="ad-content">
               <div className="ad-page-header">
                 <div>
@@ -305,12 +440,13 @@ export default function AdvertiserDashboard() {
                 </div>
               </div>
 
-              {/* Agency totals */}
-              <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+              {/* Agency totals with budget */}
+              <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                 {[
-                  { label: 'Total agency spend', value: `₹${(totalSpend / 1000).toFixed(0)}K`, sub: 'Across all brands' },
-                  { label: 'Total live streams',  value: totalStreams,   sub: 'All brands combined', highlight: true },
-                  { label: 'Total campaigns',     value: totalCampaigns, sub: 'Active & completed' },
+                  { label: 'Total spent', value: `₹${(totalSpend / 1000).toFixed(0)}K`, sub: 'Across all brands' },
+                  { label: 'Budget remaining', value: `₹${(totalBudgetRemaining / 1000).toFixed(0)}K`, sub: `of ₹${(totalBudgetAllocated / 1000).toFixed(0)}K allocated` },
+                  { label: 'Live streams', value: totalStreams, sub: 'All brands combined', highlight: true },
+                  { label: 'Total campaigns', value: totalCampaigns, sub: 'Active & completed' },
                 ].map((s, i) => (
                   <div key={i} className={`ad-stat-card ${s.highlight ? 'highlight' : ''}`}>
                     <div className="ad-stat-value">{s.value}</div>
@@ -342,7 +478,6 @@ export default function AdvertiserDashboard() {
                   <button
                     key={brand.id}
                     className="ad-brand-card"
-                    // inside the brand card onClick, change:
                     onClick={() => { setSelectedBrand(brand.id); setBrandStatusFilter('all'); setRefresh(r => r + 1) }}
                     style={{ '--brand-color': brand.color, '--brand-soft': brand.colorSoft }}
                   >
@@ -399,7 +534,7 @@ export default function AdvertiserDashboard() {
           )}
 
           {/* ── BRAND DETAIL VIEW ── */}
-          {activePage === 'overview' && selectedBrand && activeBrand && (
+          {activePage === 'overview' && !isSingleBrand && selectedBrand && activeBrand && (
             <div className="ad-content">
               <div className="ad-page-header">
                 <div>
@@ -427,24 +562,48 @@ export default function AdvertiserDashboard() {
               </div>
 
               {/* Brand stats */}
-              <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-                {[
-                  { label: 'Total spend',   value: activeBrand.totalSpend, sub: 'All time'          },
-                  { label: 'Live streams',  value: activeBrand.streams,    sub: 'Total streams',  highlight: true },
-                  { label: 'Campaigns',     value: activeBrand.campaigns,  sub: 'All campaigns'     },
-                  {
-                    label: 'Avg. per stream',
-                    value: `₹${Math.round(activeBrand.spendRaw / activeBrand.streams / 100) * 100}`,
-                    sub: 'Per stream'
-                  },
-                ].map((s, i) => (
-                  <div key={i} className={`ad-stat-card ${s.highlight ? 'highlight' : ''}`} style={s.highlight ? { background: activeBrand.color, borderColor: 'transparent' } : {}}>
-                    <div className="ad-stat-value">{s.value}</div>
-                    <div className="ad-stat-label">{s.label}</div>
-                    <div className="ad-stat-sub">{s.sub}</div>
-                  </div>
-                ))}
-              </div>
+              {(() => {
+                const bBudget = activeBrand.spendRaw * 1.4
+                const bRemaining = bBudget - activeBrand.spendRaw
+                return (
+                  <>
+                    <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+                      {[
+                        { label: 'Total spent',      value: activeBrand.totalSpend, sub: 'All time' },
+                        { label: 'Budget remaining',  value: `₹${(bRemaining / 1000).toFixed(0)}K`, sub: `of ₹${(bBudget / 1000).toFixed(0)}K allocated` },
+                        { label: 'Live streams',     value: activeBrand.streams,    sub: 'Total streams',  highlight: true },
+                        { label: 'Campaigns',        value: activeBrand.campaigns,  sub: 'Active & completed' },
+                      ].map((s, i) => (
+                        <div key={i} className={`ad-stat-card ${s.highlight ? 'highlight' : ''}`} style={s.highlight ? { background: activeBrand.color, borderColor: 'transparent' } : {}}>
+                          <div className="ad-stat-value">{s.value}</div>
+                          <div className="ad-stat-label">{s.label}</div>
+                          <div className="ad-stat-sub">{s.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Budget bar */}
+                    <div className="ad-card" style={{ marginTop: '1.25rem' }}>
+                      <div className="ad-card-header">
+                        <div>
+                          <div className="ad-eyebrow">Budget</div>
+                          <h2 className="ad-card-title">Spend <em>overview</em></h2>
+                        </div>
+                        <span className="ad-earnings-total">₹{bRemaining.toLocaleString()} remaining</span>
+                      </div>
+                      <div className="ad-brand-bar-track" style={{ height: '8px', borderRadius: '4px' }}>
+                        <div className="ad-brand-bar-fill" style={{
+                          width: `${(activeBrand.spendRaw / bBudget * 100).toFixed(0)}%`,
+                          background: activeBrand.color, borderRadius: '4px', height: '8px'
+                        }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '.5rem', fontSize: '.78rem', color: '#64748b' }}>
+                        <span>₹{activeBrand.spendRaw.toLocaleString()} spent</span>
+                        <span>₹{bBudget.toLocaleString()} total budget</span>
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
 
               {/* Campaign table */}
               <div className="ad-card" style={{ marginTop: '1.25rem' }}>

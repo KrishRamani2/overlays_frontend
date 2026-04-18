@@ -17,10 +17,17 @@ const CheckSvg = () => (
   </svg>
 );
 
-const STEPS = [
+/* ─── Dynamic steps based on type ─── */
+const BRAND_STEPS = [
+  { n: 1, label: 'Account Type' },
+  { n: 2, label: 'Company Info' },
+  { n: 3, label: 'Brand Details' },
+];
+
+const AGENCY_STEPS = [
   { n: 1, label: 'Account Type' },
   { n: 2, label: 'Agency Info' },
-  { n: 3, label: 'Brands' },
+  { n: 3, label: 'Your Brands' },
 ];
 
 export default function AdvertiserSetup() {
@@ -28,7 +35,7 @@ export default function AdvertiserSetup() {
   const { id } = useParams();
 
   const [step, setStep] = useState(1);
-  const [type, setType] = useState('');
+  const [type, setType] = useState(''); // 'single' or 'agency'
   const [isGstVerified, setIsGstVerified] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showGstModal, setShowGstModal] = useState(false);
@@ -46,7 +53,17 @@ export default function AdvertiserSetup() {
     panCard: ''
   });
 
+  // For single brand flow
+  const [brandInfo, setBrandInfo] = useState({
+    brandName: '',
+    brandDescription: '',
+    target: ''
+  });
+
+  // For agency flow
   const [brands, setBrands] = useState([{ brandName: '', brandDescription: '', target: '' }]);
+
+  const STEPS = type === 'agency' ? AGENCY_STEPS : BRAND_STEPS;
 
   React.useEffect(() => {
     if (id) {
@@ -99,33 +116,49 @@ export default function AdvertiserSetup() {
     setShowGstModal(false);
   };
 
-  const handleNextStep2 = async () => {
+  const validateCompanyData = () => {
     const { name, email, address, phone, targetAudience, webLink, registered, gstin, panCard } = companyData;
     if (!name || !email || !address || !phone || !targetAudience || !webLink) {
       setErrorMsg('Please fill in all compulsory fields.');
-      return;
+      return false;
     }
     if (registered) {
       if (!gstin || !panCard) {
         setErrorMsg('GSTIN and PAN Card are compulsory for registered companies.');
-        return;
+        return false;
       }
       if (!isGstVerified) {
         setErrorMsg('Please verify your GST Number before proceeding.');
-        return;
+        return false;
       }
     }
     setErrorMsg('');
+    return true;
+  };
+
+  const saveCompanyAndProceed = async (nextStep) => {
+    if (!validateCompanyData()) return;
     try {
       await fetch(`http://localhost:8000/api/company/${id || 'demo-id'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: companyData.name })
+        body: JSON.stringify({
+          company_type: type,
+          company_name: companyData.name,
+          email: companyData.email,
+          address: companyData.address,
+          phone: companyData.phone,
+          target_audience: companyData.targetAudience,
+          web_link: companyData.webLink,
+          gst_number: companyData.registered ? companyData.gstin : '',
+          pan_card: companyData.registered ? companyData.panCard : '',
+          name: companyData.name,
+        })
       });
     } catch (err) {
-      console.error('Failed to save company name', err);
+      console.error('Failed to save company data', err);
     }
-    setStep(3);
+    setStep(nextStep);
   };
 
   const handleBrandChange = (idx, field, val) => {
@@ -135,7 +168,10 @@ export default function AdvertiserSetup() {
   };
 
   const addBrand = () => setBrands([...brands, { brandName: '', brandDescription: '', target: '' }]);
-  const finishSetup = () => navigate(`/advertiser-dashboard/${id || 'demo-id'}`);
+
+  const finishSetup = () => {
+    navigate(`/advertiser-dashboard/${id || 'demo-id'}?type=${type}`);
+  };
 
   const stepState = (n) => n < step ? 'done' : n === step ? 'active' : '';
 
@@ -169,7 +205,9 @@ export default function AdvertiserSetup() {
 
       <div className="as-container">
 
-        {/* ════ STEP 1 ════ */}
+        {/* ════════════════════════════════════════
+           STEP 1 — Account Type Selection
+        ════════════════════════════════════════ */}
         {step === 1 && (
           <div className="as-card as-fade-in">
             <h1 className="as-title">How will you use Overlays?</h1>
@@ -195,22 +233,30 @@ export default function AdvertiserSetup() {
             </div>
 
             <div className="as-foot">
-              <button className="as-btn" disabled={!type} onClick={() => {
-                if (type === 'single') finishSetup();
-                else setStep(2);
-              }}>
+              <button className="as-btn" disabled={!type} onClick={() => setStep(2)}>
                 Continue →
               </button>
             </div>
           </div>
         )}
 
-        {/* ════ STEP 2 — Agency Info ════ */}
+        {/* ════════════════════════════════════════
+           STEP 2 — Company / Agency Info
+           Same for both flows, but label changes
+        ════════════════════════════════════════ */}
         {step === 2 && (
           <div className="as-card as-fade-in">
-            <div className="as-badge agency">Step 2 · Agency</div>
-            <h1 className="as-title">Agency Details</h1>
-            <p className="as-sub">Tell us about your advertising agency.</p>
+            <div className="as-badge agency">
+              Step 2 · {type === 'agency' ? 'Agency' : 'Company'}
+            </div>
+            <h1 className="as-title">
+              {type === 'agency' ? 'Agency Details' : 'Company Details'}
+            </h1>
+            <p className="as-sub">
+              {type === 'agency'
+                ? 'Tell us about your advertising agency.'
+                : 'Tell us about your company.'}
+            </p>
 
             <label className="as-check-label">
               <input type="checkbox" name="registered" checked={companyData.registered} onChange={handleCompanyChange} />
@@ -238,7 +284,9 @@ export default function AdvertiserSetup() {
               </>
             )}
 
-            <div className="as-section-label">Company Information</div>
+            <div className="as-section-label">
+              {type === 'agency' ? 'Agency Information' : 'Company Information'}
+            </div>
             <div className="as-grid">
               <div className="as-field">
                 <label>Company Name *</label>
@@ -270,13 +318,72 @@ export default function AdvertiserSetup() {
 
             <div className="as-foot-split">
               <button className="as-btn-back" onClick={() => setStep(1)}>← Back</button>
-              <button className="as-btn" onClick={handleNextStep2}>Continue →</button>
+              <button className="as-btn" onClick={() => saveCompanyAndProceed(3)}>Continue →</button>
             </div>
           </div>
         )}
 
-        {/* ════ STEP 3 — Brands ════ */}
-        {step === 3 && (
+        {/* ════════════════════════════════════════
+           STEP 3 (Single Brand) — Brand Details
+        ════════════════════════════════════════ */}
+        {step === 3 && type === 'single' && (
+          <div className="as-card as-fade-in">
+            <div className="as-badge brand">Step 3 · Brand</div>
+            <h1 className="as-title">Brand Details</h1>
+            <p className="as-sub">Tell us about the brand you're promoting.</p>
+
+            <div className="as-grid">
+              <div className="as-field as-full">
+                <label>Brand Name *</label>
+                <input
+                  type="text"
+                  value={brandInfo.brandName}
+                  onChange={e => setBrandInfo(p => ({ ...p, brandName: e.target.value }))}
+                  placeholder="Enter your brand name"
+                />
+              </div>
+              <div className="as-field as-full">
+                <label>Brand Description *</label>
+                <textarea
+                  value={brandInfo.brandDescription}
+                  onChange={e => setBrandInfo(p => ({ ...p, brandDescription: e.target.value }))}
+                  placeholder="What does your brand do? Describe your products or services."
+                  rows="3"
+                />
+              </div>
+              <div className="as-field as-full">
+                <label>Target Audience *</label>
+                <input
+                  type="text"
+                  value={brandInfo.target}
+                  onChange={e => setBrandInfo(p => ({ ...p, target: e.target.value }))}
+                  placeholder="e.g. Gamers 18-34, Tech Enthusiasts, Fitness Community"
+                />
+              </div>
+            </div>
+
+            {errorMsg && <div className="as-err">{errorMsg}</div>}
+
+            <div className="as-foot-split">
+              <button className="as-btn-back" onClick={() => setStep(2)}>← Back</button>
+              <button className="as-btn" onClick={() => {
+                if (!brandInfo.brandName || !brandInfo.brandDescription || !brandInfo.target) {
+                  setErrorMsg('Please fill in all brand details.');
+                  return;
+                }
+                setErrorMsg('');
+                finishSetup();
+              }}>
+                Complete Setup ✓
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════
+           STEP 3 (Agency) — Multiple Brands
+        ════════════════════════════════════════ */}
+        {step === 3 && type === 'agency' && (
           <div className="as-card as-card-wide as-fade-in">
             <div className="as-badge brand">Step 3 · Brands</div>
             <h1 className="as-title">Manage Your Brands</h1>
