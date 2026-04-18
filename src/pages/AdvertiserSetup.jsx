@@ -17,9 +17,11 @@ export default function AdvertiserSetup() {
   
   const [step, setStep] = useState(1);
   const [type, setType] = useState(''); // 'single' or 'agency'
+  const [isGstVerified, setIsGstVerified] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   
   const [companyData, setCompanyData] = useState({
-    registered: false,
+    registered: true,
     name: '',
     address: '',
     phone: '',
@@ -34,10 +36,50 @@ export default function AdvertiserSetup() {
 
   const handleCompanyChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (name === 'gstin') setIsGstVerified(false);
     setCompanyData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
+  };
+
+  const verifyGst = () => {
+    if (!companyData.gstin || companyData.gstin.length < 5) {
+      setErrorMsg('Please enter a valid GST number');
+      return;
+    }
+    setIsGstVerified(true);
+    setErrorMsg('');
+  };
+
+  const handleNextStep2 = async () => {
+    const { name, email, address, phone, targetAudience, webLink, registered, gstin, panCard } = companyData;
+    if (!name || !email || !address || !phone || !targetAudience || !webLink) {
+      setErrorMsg('Please fill in all compulsory fields.');
+      return;
+    }
+    if (registered) {
+      if (!gstin || !panCard) {
+        setErrorMsg('GSTIN and PAN Card are compulsory for registered companies.');
+        return;
+      }
+      if (!isGstVerified) {
+        setErrorMsg('Please verify your GST Number before proceeding.');
+        return;
+      }
+    }
+    setErrorMsg('');
+
+    try {
+      await fetch(`http://localhost:8000/api/company/${id || 'demo-id'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: companyData.name })
+      });
+    } catch (err) {
+      console.error('Failed to save company name', err);
+    }
+    setStep(3);
   };
 
   const handleBrandChange = (index, field, value) => {
@@ -101,48 +143,55 @@ export default function AdvertiserSetup() {
               </label>
 
               <div className="as-input-group">
-                <label>Company Name</label>
+                <label>Company Name *</label>
                 <input type="text" name="name" value={companyData.name} onChange={handleCompanyChange} placeholder="Enter company name" />
               </div>
               <div className="as-input-group">
-                <label>Email ID</label>
+                <label>Email ID *</label>
                 <input type="email" name="email" value={companyData.email} onChange={handleCompanyChange} placeholder="company@email.com" />
               </div>
               <div className="as-input-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Address</label>
+                <label>Address *</label>
                 <input type="text" name="address" value={companyData.address} onChange={handleCompanyChange} placeholder="Full address" />
               </div>
               <div className="as-input-group">
-                <label>Phone Number</label>
+                <label>Phone Number *</label>
                 <input type="text" name="phone" value={companyData.phone} onChange={handleCompanyChange} placeholder="+91 00000 00000" />
               </div>
               <div className="as-input-group">
-                <label>Target Audience</label>
+                <label>Target Audience *</label>
                 <input type="text" name="targetAudience" value={companyData.targetAudience} onChange={handleCompanyChange} placeholder="e.g. Gamers, Tech Enthusiasts" />
               </div>
 
               {companyData.registered && (
                 <>
-                  <div className="as-input-group">
-                    <label>GSTIN</label>
-                    <input type="text" name="gstin" value={companyData.gstin} onChange={handleCompanyChange} placeholder="GST Number" />
+                  <div className="as-input-group" style={{ position: 'relative' }}>
+                    <label>GST Number *</label>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input type="text" name="gstin" value={companyData.gstin} onChange={handleCompanyChange} placeholder="Enter GST Number" style={{ flex: 1 }} />
+                      <button className="as-btn-ghost" onClick={verifyGst} style={{ padding: '0 1rem', whiteSpace: 'nowrap' }}>
+                        {isGstVerified ? '✓ Verified' : 'Verify'}
+                      </button>
+                    </div>
                   </div>
                   <div className="as-input-group">
-                    <label>PAN Card</label>
+                    <label>PAN Card *</label>
                     <input type="text" name="panCard" value={companyData.panCard} onChange={handleCompanyChange} placeholder="PAN Number" />
                   </div>
                 </>
               )}
               
               <div className="as-input-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Web Link</label>
+                <label>Web Link *</label>
                 <input type="text" name="webLink" value={companyData.webLink} onChange={handleCompanyChange} placeholder="https://yourwebsite.com" />
               </div>
             </div>
 
+            {errorMsg && <div className="as-error-msg" style={{ color: '#EF4444', marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 500 }}>{errorMsg}</div>}
+
             <div className="as-footer-split">
               <button className="as-btn-ghost" onClick={() => setStep(1)}>← Back</button>
-              <button className="as-btn-primary" onClick={() => setStep(3)}>Next Step →</button>
+              <button className="as-btn-primary" onClick={handleNextStep2}>Next Step →</button>
             </div>
           </div>
         )}

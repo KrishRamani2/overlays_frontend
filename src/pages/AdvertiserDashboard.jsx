@@ -157,17 +157,26 @@ export default function AdvertiserDashboard() {
     if (!id) return;
     getAdvertiserMe(id).then(data => {
       if (data) {
-        setUser({
-          ...AGENCY_USER,
+        setUser(prev => ({
+          ...prev,
           name: data.name || 'Advertiser',
           email: data.email || '',
           picture: data.picture || null,
           id: data.id || null,
-        })
+        }))
       } else {
         setUser(prev => ({ ...prev, name: 'Advertiser' }))
       }
     })
+
+    fetch(`http://localhost:8000/api/company/${id}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.name) {
+          setUser(prev => ({ ...prev, agency: data.name }))
+        }
+      })
+      .catch(err => console.error('Failed to fetch company info', err))
   }, [])
 
   const handleNav = (id) => {
