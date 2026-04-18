@@ -19,6 +19,8 @@ export default function AdvertiserSetup() {
   const [type, setType] = useState(''); // 'single' or 'agency'
   const [isGstVerified, setIsGstVerified] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showGstModal, setShowGstModal] = useState(false);
+  const [fetchedDetails, setFetchedDetails] = useState(null);
   
   const [companyData, setCompanyData] = useState({
     registered: true,
@@ -34,6 +36,25 @@ export default function AdvertiserSetup() {
 
   const [brands, setBrands] = useState([{ brandName: '', brandDescription: '', target: '' }]);
 
+  React.useEffect(() => {
+    if (id) {
+      fetch(`http://localhost:8000/api/company/${id}`)
+        .then(res => {
+          if (res.ok) return res.json();
+          throw new Error('Not found');
+        })
+        .then(data => {
+          if (data && data.name) {
+            // Company is already set up, skip directly to dashboard
+            navigate(`/advertiser-dashboard/${id}`, { replace: true });
+          }
+        })
+        .catch(err => {
+          // Needs setup, continue
+        });
+    }
+  }, [id, navigate]);
+
   const handleCompanyChange = (e) => {
     const { name, value, type, checked } = e.target;
     if (name === 'gstin') setIsGstVerified(false);
@@ -48,8 +69,28 @@ export default function AdvertiserSetup() {
       setErrorMsg('Please enter a valid GST number');
       return;
     }
-    setIsGstVerified(true);
     setErrorMsg('');
+    setFetchedDetails({
+      name: 'PixelMosaic Agency Pvt Ltd',
+      email: 'contact@pixelmosaic.in',
+      address: '123 Tech Park, Andheri East, Mumbai, Maharashtra 400069',
+      phone: '+91 98765 43210',
+      panCard: 'ABCDE1234F'
+    });
+    setShowGstModal(true);
+  };
+
+  const confirmGstDetails = () => {
+    setCompanyData(prev => ({
+      ...prev,
+      name: fetchedDetails.name,
+      email: fetchedDetails.email,
+      address: fetchedDetails.address,
+      phone: fetchedDetails.phone,
+      panCard: fetchedDetails.panCard
+    }));
+    setIsGstVerified(true);
+    setShowGstModal(false);
   };
 
   const handleNextStep2 = async () => {
@@ -137,10 +178,28 @@ export default function AdvertiserSetup() {
             <p className="as-sub">Please provide details about your agency.</p>
             
             <div className="as-form-grid">
-              <label className="as-checkbox-label" style={{ gridColumn: '1 / -1' }}>
+              <label className="as-checkbox-label" style={{ gridColumn: '1 / -1', marginBottom: '0.5rem' }}>
                 <input type="checkbox" name="registered" checked={companyData.registered} onChange={handleCompanyChange} />
                 <span>Is your company registered?</span>
               </label>
+
+              {companyData.registered && (
+                <>
+                  <div className="as-input-group" style={{ position: 'relative' }}>
+                    <label>GST Number *</label>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input type="text" name="gstin" value={companyData.gstin} onChange={handleCompanyChange} placeholder="Enter GST Number" style={{ flex: 1 }} />
+                      <button className="as-btn-primary" onClick={verifyGst} style={{ padding: '0 1rem', whiteSpace: 'nowrap' }}>
+                        {isGstVerified ? '✓ Verified' : 'Verify & Fetch'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="as-input-group">
+                    <label>PAN Card *</label>
+                    <input type="text" name="panCard" value={companyData.panCard} onChange={handleCompanyChange} placeholder="PAN Number" />
+                  </div>
+                </>
+              )}
 
               <div className="as-input-group">
                 <label>Company Name *</label>
@@ -162,24 +221,6 @@ export default function AdvertiserSetup() {
                 <label>Target Audience *</label>
                 <input type="text" name="targetAudience" value={companyData.targetAudience} onChange={handleCompanyChange} placeholder="e.g. Gamers, Tech Enthusiasts" />
               </div>
-
-              {companyData.registered && (
-                <>
-                  <div className="as-input-group" style={{ position: 'relative' }}>
-                    <label>GST Number *</label>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <input type="text" name="gstin" value={companyData.gstin} onChange={handleCompanyChange} placeholder="Enter GST Number" style={{ flex: 1 }} />
-                      <button className="as-btn-ghost" onClick={verifyGst} style={{ padding: '0 1rem', whiteSpace: 'nowrap' }}>
-                        {isGstVerified ? '✓ Verified' : 'Verify'}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="as-input-group">
-                    <label>PAN Card *</label>
-                    <input type="text" name="panCard" value={companyData.panCard} onChange={handleCompanyChange} placeholder="PAN Number" />
-                  </div>
-                </>
-              )}
               
               <div className="as-input-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Web Link *</label>
@@ -232,6 +273,29 @@ export default function AdvertiserSetup() {
           </div>
         )}
       </div>
+
+      {/* GST Verification Modal */}
+      {showGstModal && fetchedDetails && (
+        <div className="as-modal-overlay">
+          <div className="as-modal-content">
+            <h2>Company Details Found</h2>
+            <p className="as-muted">Please confirm if these details match your company.</p>
+            
+            <div className="as-details-list">
+              <div className="as-detail-item"><strong>Name:</strong> {fetchedDetails.name}</div>
+              <div className="as-detail-item"><strong>Email:</strong> {fetchedDetails.email}</div>
+              <div className="as-detail-item"><strong>Address:</strong> {fetchedDetails.address}</div>
+              <div className="as-detail-item"><strong>Phone:</strong> {fetchedDetails.phone}</div>
+              <div className="as-detail-item"><strong>PAN Card:</strong> {fetchedDetails.panCard}</div>
+            </div>
+
+            <div className="as-modal-actions">
+              <button className="as-btn-ghost" onClick={() => setShowGstModal(false)}>Cancel</button>
+              <button className="as-btn-primary" onClick={confirmGstDetails}>Confirm & Auto-fill</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
