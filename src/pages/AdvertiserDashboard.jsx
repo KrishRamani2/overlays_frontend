@@ -252,9 +252,21 @@ export default function AdvertiserDashboard() {
   const [brandsList, setBrandsList] = useState([])
   const [loadingBrands, setLoadingBrands] = useState(true)
 
-  const [wallet, setWallet] = useState({ balance_rupees: '0.00', balance_cents: 0 })
+  const [wallet, setWallet] = useState({ 
+    balance_rupees: '0.00', 
+    balance_cents: 0,
+    budget_rupees: '0.00',
+    spent_rupees: '0.00'
+  })
+  const [billingSummary, setBillingSummary] = useState(null)
   const [showWalletModal, setShowWalletModal] = useState(false)
   const [isTopupLoading, setIsTopupLoading] = useState(false)
+
+  const [showAddBrandModal, setShowAddBrandModal] = useState(false)
+  const [showAllocateModal, setShowAllocateModal] = useState(false)
+  const [brandToAllocate, setBrandToAllocate] = useState(null)
+  const [isBrandLoading, setIsBrandLoading] = useState(false)
+  const [refresh, setRefresh] = useState(0)
 
   useEffect(() => {
     if (!id) return;
@@ -285,14 +297,19 @@ export default function AdvertiserDashboard() {
         setLoadingBrands(false)
       })
 
-    // Fetch Wallet
-    fetch(`${ADV_BASE}/api/accounts/${id}/billing/wallet`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data) setWallet(data)
-      })
-      .catch(err => console.error('Failed to fetch wallet', err))
-  }, [id])
+    // Fetch Wallet & Summary
+    const fetchBillingData = async () => {
+      try {
+        const res = await fetch(`${ADV_BASE}/api/accounts/${id}/billing/summary`, { credentials: 'include' })
+        if (res.ok) {
+          const data = await res.json()
+          setBillingSummary(data)
+          if (data.wallet) setWallet(data.wallet)
+        }
+      } catch (err) { console.error('Failed to fetch billing summary', err) }
+    }
+    fetchBillingData()
+  }, [id, refresh])
 
   const saveSettings = async (newData) => {
     try {
@@ -378,6 +395,72 @@ export default function AdvertiserDashboard() {
     logoutAdvertiser()
   }
 
+  const handleAddBrand = async (brandData) => {
+    setIsBrandLoading(true)
+    try {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${id}/brands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          brand_name: brandData.name,
+          brand_description: brandData.description,
+          brand_logo: brandData.logo,
+          allocated_budget_rupees: brandData.budget
+        })
+      })
+      if (res.ok) {
+        const newBrand = await res.json()
+        setBrandsList(prev => [...prev, newBrand])
+        setShowAddBrandModal(false)
+        setRefresh(r => r + 1)
+        alert('Brand added successfully!')
+      } else {
+        const err = await res.json()
+        alert(err.detail || 'Failed to add brand')
+      }
+    } catch (err) {
+      console.error(err)
+      alert('Failed to add brand')
+    } finally {
+      setIsBrandLoading(false)
+    }
+  }
+
+  const handleAllocateBudget = async (brandId, amount) => {
+    setIsBrandLoading(true)
+    try {
+      // Find the current brand to get its existing allocated budget
+      const currentBrand = brandsList.find(b => b.id === brandId)
+      const existingBudget = parseFloat(currentBrand?.allocated_budget_rupees || 0)
+      const newTotal = existingBudget + parseFloat(amount)
+
+      const res = await fetch(`${ADV_BASE}/api/accounts/${id}/brands/${brandId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          allocated_budget_rupees: newTotal.toString()
+        })
+      })
+      if (res.ok) {
+        const updatedBrand = await res.json()
+        setBrandsList(prev => prev.map(b => b.id === brandId ? updatedBrand : b))
+        setShowAllocateModal(false)
+        setRefresh(r => r + 1)
+        alert(`Successfully allocated \u20b9${amount} to ${updatedBrand.brand_name}`)
+      } else {
+        const err = await res.json()
+        alert(err.detail || 'Failed to allocate budget')
+      }
+    } catch (err) {
+      console.error(err)
+      alert('Failed to allocate budget')
+    } finally {
+      setIsBrandLoading(false)
+    }
+  }
+
   const handleTopup = async (amount) => {
     setIsTopupLoading(true)
     const idempotencyKey = `topup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -403,6 +486,7 @@ export default function AdvertiserDashboard() {
         const data = await res.json()
         setWallet(data.wallet)
         setShowWalletModal(false)
+        setRefresh(r => r + 1)
         alert(`Successfully added ₹${amount} to your wallet!`)
       } else {
         const err = await res.json()
@@ -416,8 +500,6 @@ export default function AdvertiserDashboard() {
     }
   }
 
-  const [refresh, setRefresh] = useState(0)
-
   // Map real brands to UI format and merge with mock stats for demo
   const MOCK_STATS_TEMPLATE = {
     spend: '₹42K', spendRaw: 42000,
@@ -427,22 +509,30 @@ export default function AdvertiserDashboard() {
   }
 
   const BRANDS = brandsList.length > 0 
-    ? brandsList.map((b, i) => ({
-        ...MOCK_STATS_TEMPLATE,
-        id: b.id,
-        name: b.brand_name,
-        category: b.target_audience,
-        logo: b.brand_logo || (b.brand_name ? b.brand_name[0] : 'B'),
-        color: ['#3B5BFF', '#7C3AED', '#EC4899', '#10B981', '#F59E0B'][i % 5],
-        brand_description: b.brand_description
-      }))
+    ? brandsList.map((b, i) => {
+        const allocated = parseFloat(b.allocated_budget_rupees || 0)
+        return {
+          ...MOCK_STATS_TEMPLATE,
+          id: b.id,
+          name: b.brand_name,
+          category: b.target_audience || 'Brand',
+          logo: b.brand_logo || (b.brand_name ? b.brand_name[0] : 'B'),
+          color: ['#3B5BFF', '#7C3AED', '#EC4899', '#10B981', '#F59E0B'][i % 5],
+          brand_description: b.brand_description,
+          allocated_budget_rupees: allocated,
+          spent_rupees: parseFloat(b.spent_rupees || 0),
+          remaining_budget_rupees: parseFloat(b.remaining_budget_rupees || 0),
+          locked: allocated === 0,
+          totalSpend: `₹${parseFloat(b.spent_rupees || 0).toLocaleString()}`,
+          spendRaw: parseFloat(b.spent_rupees || 0)
+        }
+      })
     : (loadingBrands ? [] : getAllBrandsWithStats())
 
-  const totalSpend    = BRANDS.reduce((s, b) => s + (b.spendRaw || 0), 0)
-  const totalStreams   = BRANDS.reduce((s, b) => s + (b.streams || 0), 0)
+  const totalSpend    = parseFloat(wallet.spent_rupees || 0)
+  const totalBudget   = parseFloat(wallet.budget_rupees || 0)
+  const totalBalance  = parseFloat(wallet.balance_rupees || 0)
   const totalCampaigns = BRANDS.reduce((s, b) => s + (b.campaigns || 0), 0)
-  const totalBudgetAllocated = BRANDS.reduce((s, b) => s + (b.budgetAllocated || (b.spendRaw ? b.spendRaw * 1.4 : 0)), 0)
-  const totalBudgetRemaining = totalBudgetAllocated - totalSpend
 
   const activeBrand    = selectedBrand ? BRANDS.find(b => b.id === selectedBrand) : null
   const brandCampaigns = selectedBrand ? getCampaigns(selectedBrand) : []
@@ -558,8 +648,8 @@ export default function AdvertiserDashboard() {
           {activePage === 'overview' && isSingleBrand && (() => {
             const brand = BRANDS[0]
             if (!brand) return null
-            const brandBudget = brand.spendRaw * 1.4
-            const brandRemaining = brandBudget - brand.spendRaw
+            const brandBudget = brand.allocated_budget_rupees || 0
+            const brandRemaining = brand.remaining_budget_rupees || 0
             const brandCamps = getCampaigns(brand.id)
             return (
               <div className="ad-content">
@@ -576,10 +666,10 @@ export default function AdvertiserDashboard() {
                 {/* Brand stats with budget */}
                 <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                   {[
-                    { label: 'Total spent', value: brand.totalSpend, sub: 'All time' },
-                    { label: 'Budget remaining', value: `₹${(brandRemaining / 1000).toFixed(0)}K`, sub: `of ₹${(brandBudget / 1000).toFixed(0)}K allocated` },
-                    { label: 'Live streams', value: brand.streams, sub: 'Total streams', highlight: true },
-                    { label: 'Campaigns', value: brand.campaigns, sub: 'Active & completed' },
+                    { label: 'Total Spent', value: brand.totalSpend, sub: 'Campaign spending' },
+                    { label: 'Budget Remaining', value: `₹${parseFloat(brand.remaining_budget_rupees || 0).toLocaleString()}`, sub: `of ₹${parseFloat(brand.allocated_budget_rupees || 0).toLocaleString()} allocated` },
+                    { label: 'Live Streams', value: brand.streams || 0, sub: 'Total streams', highlight: true },
+                    { label: 'Campaigns', value: brand.campaigns || 0, sub: 'Active & completed' },
                   ].map((s, i) => (
                     <div key={i} className={`ad-stat-card ${s.highlight ? 'highlight' : ''}`}>
                       <div className="ad-stat-value">{s.value}</div>
@@ -600,13 +690,13 @@ export default function AdvertiserDashboard() {
                   </div>
                   <div className="ad-brand-bar-track" style={{ height: '8px', borderRadius: '4px' }}>
                     <div className="ad-brand-bar-fill" style={{
-                      width: `${(brand.spendRaw / brandBudget * 100).toFixed(0)}%`,
+                      width: `${brandBudget > 0 ? Math.min((brand.spendRaw / brandBudget) * 100, 100).toFixed(0) : 0}%`,
                       background: '#3B5BFF', borderRadius: '4px', height: '8px'
                     }} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '.5rem', fontSize: '.78rem', color: '#64748b' }}>
                     <span>₹{brand.spendRaw.toLocaleString()} spent</span>
-                    <span>₹{brandBudget.toLocaleString()} total budget</span>
+                    <span>₹{brand.allocated_budget_rupees.toLocaleString()} total budget</span>
                   </div>
                 </div>
 
@@ -702,10 +792,10 @@ export default function AdvertiserDashboard() {
               {/* Agency totals with budget */}
               <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                 {[
-                  { label: 'Total spent', value: `₹${(totalSpend / 1000).toFixed(0)}K`, sub: 'Across all brands' },
-                  { label: 'Budget remaining', value: `₹${(totalBudgetRemaining / 1000).toFixed(0)}K`, sub: `of ₹${(totalBudgetAllocated / 1000).toFixed(0)}K allocated` },
-                  { label: 'Live streams', value: totalStreams, sub: 'All brands combined', highlight: true },
-                  { label: 'Total campaigns', value: totalCampaigns, sub: 'Active & completed' },
+                  { label: 'Total Left', value: `₹${totalBalance.toLocaleString()}`, sub: 'Unallocated in wallet', highlight: true },
+                  { label: 'Total Allocated', value: `₹${totalBudget.toLocaleString()}`, sub: 'Across all brands' },
+                  { label: 'Total Spent', value: `₹${totalSpend.toLocaleString()}`, sub: 'By all campaigns' },
+                  { label: 'Total Campaigns', value: totalCampaigns, sub: 'Active & completed' },
                 ].map((s, i) => (
                   <div key={i} className={`ad-stat-card ${s.highlight ? 'highlight' : ''}`}>
                     <div className="ad-stat-value">{s.value}</div>
@@ -730,16 +820,35 @@ export default function AdvertiserDashboard() {
               {/* Brand cards */}
               <div className="primary-brand-header">
                 <div className="ad-eyebrow" style={{ marginBottom: '0.85rem' }}>Your Brands</div>
-                <button className="ad-btn-primary ad-btn-sm">+ Add brand</button>
+                <button className="ad-btn-primary ad-btn-sm" onClick={() => setShowAddBrandModal(true)}>+ Add brand</button>
               </div>
               <div className="ad-brands-grid">
                 {BRANDS.map(brand => (
                   <button
                     key={brand.id}
-                    className="ad-brand-card"
-                    onClick={() => { setSelectedBrand(brand.id); setBrandStatusFilter('all'); setRefresh(r => r + 1) }}
+                    className={`ad-brand-card ${brand.locked ? 'locked' : ''}`}
+                    onClick={() => { 
+                      if (brand.locked) {
+                        setBrandToAllocate(brand)
+                        setShowAllocateModal(true)
+                      } else {
+                        setSelectedBrand(brand.id); 
+                        setBrandStatusFilter('all'); 
+                        setRefresh(r => r + 1)
+                      }
+                    }}
                     style={{ '--brand-color': brand.color, '--brand-soft': brand.colorSoft }}
                   >
+                    {brand.locked && (
+                      <div className="ad-brand-locked-overlay">
+                        <div className="ad-lock-badge">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                          </svg>
+                          Budget Required
+                        </div>
+                      </div>
+                    )}
                     <div className="ad-brand-card-top">
                       <div className="ad-brand-logo" style={{ background: brand.color, color: 'white' }}>
                         {brand.logo}
@@ -770,21 +879,23 @@ export default function AdvertiserDashboard() {
                     <div className="ad-brand-budget-row">
                       <span className="ad-brand-budget-label">Allocated</span>
                       <span className="ad-brand-budget-val">
-                        ₹{((brand.spendRaw * 1.4) / 1000).toFixed(0)}K
+                        {brand.allocated_budget_rupees > 0 ? `\u20b9${brand.allocated_budget_rupees.toLocaleString()}` : '\u20b90'}
                       </span>
                     </div>
                     <div className="ad-brand-bar-track">
                       <div
                         className="ad-brand-bar-fill"
                         style={{
-                          width: `${Math.min((brand.spendRaw / (brand.spendRaw * 1.4)) * 100, 100)}%`,
+                          width: `${brand.allocated_budget_rupees > 0 ? Math.min((brand.spendRaw / brand.allocated_budget_rupees) * 100, 100) : 0}%`,
                           background: brand.color,
                         }}
                       />
                     </div>
                     <div className="ad-brand-bar-pct" style={{ color: brand.color }}>
-                      {((brand.spendRaw / (brand.spendRaw * 1.4)) * 100).toFixed(0)}% of allocated budget used
-                      · ₹{((brand.spendRaw * 1.4 - brand.spendRaw) / 1000).toFixed(0)}K remaining
+                      {brand.allocated_budget_rupees > 0
+                        ? `${Math.min((brand.spendRaw / brand.allocated_budget_rupees) * 100, 100).toFixed(0)}% used`
+                        : 'No budget'}
+                      {brand.remaining_budget_rupees > 0 && ` \u00b7 \u20b9${brand.remaining_budget_rupees.toLocaleString()} remaining`}
                     </div>
                   </button>
                 ))}
@@ -822,16 +933,16 @@ export default function AdvertiserDashboard() {
 
               {/* Brand stats */}
               {(() => {
-                const bBudget = activeBrand.spendRaw * 1.4
-                const bRemaining = bBudget - activeBrand.spendRaw
+                const bBudget = activeBrand.allocated_budget_rupees || 0
+                const bRemaining = activeBrand.remaining_budget_rupees || 0
                 return (
                   <>
                     <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                       {[
-                        { label: 'Total spent',      value: activeBrand.totalSpend, sub: 'All time' },
-                        { label: 'Budget remaining',  value: `₹${(bRemaining / 1000).toFixed(0)}K`, sub: `of ₹${(bBudget / 1000).toFixed(0)}K allocated` },
-                        { label: 'Live streams',     value: activeBrand.streams,    sub: 'Total streams',  highlight: true },
-                        { label: 'Campaigns',        value: activeBrand.campaigns,  sub: 'Active & completed' },
+                        { label: 'Total Spent',      value: activeBrand.totalSpend, sub: 'Campaign spending' },
+                        { label: 'Budget Remaining',  value: `₹${bRemaining.toLocaleString()}`, sub: `of ₹${bBudget.toLocaleString()} allocated` },
+                        { label: 'Live Streams',     value: activeBrand.streams || 0,    sub: 'Total streams',  highlight: true },
+                        { label: 'Campaigns',        value: activeBrand.campaigns || 0,  sub: 'Active & completed' },
                       ].map((s, i) => (
                         <div key={i} className={`ad-stat-card ${s.highlight ? 'highlight' : ''}`} style={s.highlight ? { background: activeBrand.color, borderColor: 'transparent' } : {}}>
                           <div className="ad-stat-value">{s.value}</div>
@@ -851,7 +962,7 @@ export default function AdvertiserDashboard() {
                       </div>
                       <div className="ad-brand-bar-track" style={{ height: '8px', borderRadius: '4px' }}>
                         <div className="ad-brand-bar-fill" style={{
-                          width: `${(activeBrand.spendRaw / bBudget * 100).toFixed(0)}%`,
+                          width: `${bBudget > 0 ? Math.min((activeBrand.spendRaw / bBudget) * 100, 100).toFixed(0) : 0}%`,
                           background: activeBrand.color, borderRadius: '4px', height: '8px'
                         }} />
                       </div>
@@ -1222,7 +1333,7 @@ export default function AdvertiserDashboard() {
                       <div className="ad-eyebrow">Brands</div>
                       <h2 className="ad-card-title">Manage <em>brands</em></h2>
                     </div>
-                    <button className="ad-btn-primary ad-btn-sm">+ Add brand</button>
+                    <button className="ad-btn-primary ad-btn-sm" onClick={() => setShowAddBrandModal(true)}>+ Add brand</button>
                   </div>
                   <div className="ad-brand-settings-list">
                     {loadingBrands && <div style={{padding:'1rem', color:'var(--muted)'}}>Loading brands...</div>}
@@ -1320,6 +1431,147 @@ export default function AdvertiserDashboard() {
           isLoading={isTopupLoading}
         />
       )}
+
+      {/* ══ ADD BRAND MODAL ══ */}
+      {showAddBrandModal && (
+        <AddBrandModal 
+          onClose={() => setShowAddBrandModal(false)}
+          onAdd={handleAddBrand}
+          isLoading={isBrandLoading}
+        />
+      )}
+
+      {/* ══ ALLOCATE BUDGET MODAL ══ */}
+      {showAllocateModal && brandToAllocate && (
+        <AllocateBudgetModal 
+          brand={brandToAllocate}
+          onClose={() => setShowAllocateModal(false)}
+          onAllocate={handleAllocateBudget}
+          isLoading={isBrandLoading}
+        />
+      )}
+    </div>
+  )
+}
+function AddBrandModal({ onClose, onAdd, isLoading }) {
+  const [formData, setFormData] = useState({ name: '', description: '', logo: '', budget: '' })
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    onAdd(formData)
+  }
+
+  return (
+    <div className="ad-modal-overlay">
+      <div className="ad-modal-card">
+        <div className="ad-modal-header">
+          <div className="ad-modal-title-wrap">
+            <div className="ad-eyebrow">New Brand</div>
+            <h2 className="ad-modal-title">Add <em>brand</em></h2>
+          </div>
+          <button className="ad-modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="ad-modal-body">
+          <form onSubmit={handleSubmit} className="ad-settings-fields">
+            <div className="ad-settings-field">
+              <label className="ad-settings-label">Brand Name</label>
+              <input 
+                className="ad-settings-input" 
+                value={formData.name} 
+                onChange={e => setFormData({...formData, name: e.target.value})} 
+                placeholder="e.g. Nike"
+                required
+              />
+            </div>
+            <div className="ad-settings-field">
+              <label className="ad-settings-label">Description</label>
+              <textarea 
+                className="ad-settings-input" 
+                style={{ height: '80px', resize: 'none' }}
+                value={formData.description} 
+                onChange={e => setFormData({...formData, description: e.target.value})} 
+                placeholder="What does this brand do?"
+              />
+            </div>
+            <div className="ad-settings-field">
+              <label className="ad-settings-label">Logo URL (Optional)</label>
+              <input 
+                className="ad-settings-input" 
+                value={formData.logo} 
+                onChange={e => setFormData({...formData, logo: e.target.value})} 
+                placeholder="https://..."
+              />
+            </div>
+            <div className="ad-settings-field">
+              <label className="ad-settings-label">Initial Budget Allocation (₹)</label>
+              <input 
+                type="number"
+                className="ad-settings-input" 
+                value={formData.budget} 
+                onChange={e => setFormData({...formData, budget: e.target.value})} 
+                placeholder="0.00"
+                min="0"
+              />
+              <span className="ad-muted" style={{ fontSize: '0.7rem', marginTop: '0.25rem' }}>
+                You can start campaigns once budget is allocated.
+              </span>
+            </div>
+            <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
+              <button type="submit" className="ad-btn-primary" disabled={isLoading}>
+                {isLoading ? 'Creating...' : 'Create Brand'}
+              </button>
+              <button type="button" className="ad-btn-ghost" onClick={onClose}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AllocateBudgetModal({ brand, onClose, onAllocate, isLoading }) {
+  const [amount, setAmount] = useState('')
+
+  return (
+    <div className="ad-modal-overlay">
+      <div className="ad-modal-card wallet-modal">
+        <div className="ad-modal-header">
+          <div className="ad-modal-title-wrap">
+            <div className="ad-eyebrow">Budget Allocation</div>
+            <h2 className="ad-modal-title">Fund <em>{brand.name}</em></h2>
+          </div>
+          <button className="ad-modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="ad-modal-body">
+          <div className="wallet-info-note" style={{ marginBottom: '1.5rem' }}>
+            Allocating budget will unlock this brand and allow you to start new campaigns.
+          </div>
+          <form onSubmit={(e) => { e.preventDefault(); onAllocate(brand.id, amount) }} className="wallet-form">
+            <div className="ad-form-group">
+              <label className="ad-label">Amount to Allocate (₹)</label>
+              <div className="amount-input-wrap">
+                <span className="currency-prefix">₹</span>
+                <input 
+                  type="number" 
+                  className="ad-input amount-input"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  required
+                  min="1"
+                />
+              </div>
+            </div>
+            <button 
+              type="submit" 
+              className="ad-btn-primary wallet-submit-btn" 
+              disabled={isLoading || !amount}
+            >
+              {isLoading ? 'Processing...' : 'Confirm Allocation'}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   )
 }

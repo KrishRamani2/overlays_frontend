@@ -878,3 +878,32 @@
   transition: all 0.2s;
 }
 .ad-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,91,255,0.08); }
+/* Locked Brand State */
+.ad-brand-card.locked {
+  position: relative;
+  border-style: dashed;
+  opacity: 0.8;
+}
+.ad-brand-locked-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(2px);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+}
+.ad-lock-badge {
+  background: var(--ink);
+  color: white;
+  padding: 0.4rem 0.8rem;
+  border-radius: 100px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
