@@ -1,4 +1,5 @@
 const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:1000/api/v1'
+const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
 
 export async function apiFetch(path, options = {}) {
   try {
@@ -67,7 +68,7 @@ export async function logout() {
 
 export async function getAdvertiserMe(userId) {
   try {
-    const res = await fetch(`http://localhost:8000/auth/google/me/${userId}`, { credentials: 'include' })
+    const res = await fetch(`${ADV_BASE}/auth/google/me/${userId}`, { credentials: 'include' })
     if (!res.ok) return null
     const body = await res.json()
     return body.user || body
@@ -77,12 +78,12 @@ export async function getAdvertiserMe(userId) {
 }
 
 export function loginWithGoogleAdvertiser() {
-  window.location.href = 'http://localhost:8000/auth/google/login'
+  window.location.href = `${ADV_BASE}/auth/google/login`
 }
 
 export async function logoutAdvertiser() {
   try {
-    await fetch('http://localhost:8000/auth/google/logout', { credentials: 'include' })
+    await fetch(`${ADV_BASE}/auth/google/logout`, { credentials: 'include' })
   } catch {}
   window.location.href = '/'
 }

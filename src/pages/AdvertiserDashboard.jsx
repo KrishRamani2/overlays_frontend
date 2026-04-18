@@ -5,6 +5,8 @@ import DownloadReportModal from './DownloadReportModal'
 import { getAdvertiserMe, logoutAdvertiser } from '../api/auth'
 import './AdvertiserDashboard.css'
 
+const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
+
 /* ── DEV MODE ── */
 const DEV_MODE = true
 
@@ -176,7 +178,7 @@ export default function AdvertiserDashboard() {
 
   const saveSettings = async (newData) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/accounts/${id}`, {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -202,7 +204,7 @@ export default function AdvertiserDashboard() {
   const deleteAccount = async () => {
     if (!window.confirm('Are you sure you want to permanently delete your account? This action cannot be undone.')) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/accounts/${id}`, {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${id}`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -218,7 +220,7 @@ export default function AdvertiserDashboard() {
   const deactivateAccount = async () => {
     if (!window.confirm('Are you sure you want to deactivate your account?')) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/accounts/${id}/deactivate`, {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${id}/deactivate`, {
         method: 'POST',
         credentials: 'include'
       });

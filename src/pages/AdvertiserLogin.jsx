@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { getMe, loginWithGoogleAdvertiser } from '../api/auth'
 import './AdvertiserLogin.css'
 
+const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
+
 const LogoIcon = () => (
   <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
     <rect x="2"  y="2"  width="10" height="10" rx="3" fill="#3B5BFF"/>
@@ -42,13 +44,13 @@ export default function AdvertiserLogin() {
       if (user && user.role === 'advertiser') {
         const id = user.id || user._id || 'demo-id';
         try {
-          const res = await fetch(`http://127.0.0.1:8000/api/accounts/${id}`, { credentials: 'include' });
+          const res = await fetch(`${ADV_BASE}/api/accounts/${id}`, { credentials: 'include' });
           const data = res.ok ? await res.json() : null;
           const needsSetup = !data || !data.company_type || data.company_type === 'advertiser';
 
           if (needsSetup) {
             // Sync Google profile data before setup
-            await fetch(`http://127.0.0.1:8000/api/accounts/${id}`, {
+            await fetch(`${ADV_BASE}/api/accounts/${id}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',

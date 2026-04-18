@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { getAdvertiserMe } from '../api/auth';
 import './AdvertiserSetup.css';
 
+const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
+
 const LogoIcon = () => (
   <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
     <rect x="2"  y="2"  width="10" height="10" rx="3" fill="#3B5BFF"/>
@@ -81,7 +83,7 @@ export default function AdvertiserSetup() {
       });
       
       // Check if data is already available
-      fetch(`http://127.0.0.1:8000/api/accounts/${id}`, { credentials: 'include' })
+      fetch(`${ADV_BASE}/api/accounts/${id}`, { credentials: 'include' })
         .then(res => {
           if (res.ok) return res.json();
           throw new Error('Not found');
@@ -155,7 +157,7 @@ export default function AdvertiserSetup() {
   const saveCompanyAndProceed = async (nextStep) => {
     if (!validateCompanyData()) return;
     try {
-      await fetch(`http://127.0.0.1:8000/api/accounts/${id || 'demo-id'}`, {
+      await fetch(`${ADV_BASE}/api/accounts/${id || 'demo-id'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

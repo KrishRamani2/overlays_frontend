@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { getMe, loginWithGoogle } from '../api/auth'
+import { getMe, loginWithGoogle, loginWithGoogleAdvertiser } from '../api/auth'
 import './StreamerLogin.css'
 
 const LogoIcon = () => (
@@ -138,7 +138,7 @@ export default function StreamerLogin() {
           <p className="sl-role-desc">
             Launch campaigns, target streamers, and track real-time performance analytics.
           </p>
-          <button className="sl-google-btn" onClick={() => window.location.href = 'http://localhost:8000/auth/google/login'}>
+          <button className="sl-google-btn" onClick={() => loginWithGoogleAdvertiser()}>
             <GoogleIcon />
             Continue with Google
           </button>

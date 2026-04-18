@@ -4,6 +4,8 @@ import { getMe } from '../api/auth'
 import Navbar from '../components/Navbar'
 import './Home.css'
 
+const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
+
 // ── Scroll reveal ────────────────────────────────────────
 function useScrollReveal() {
   useEffect(() => {
@@ -29,7 +31,7 @@ function usePostLoginRedirect() {
         navigate(hasSetup ? '/streamer-dashboard' : '/setup/profile', { replace: true })
       } else if (user.role === 'advertiser') {
         const id = user.id || user._id || 'demo-id';
-        fetch(`http://127.0.0.1:8000/api/accounts/${id}`, { credentials: 'include' })
+        fetch(`${ADV_BASE}/api/accounts/${id}`, { credentials: 'include' })
           .then(res => res.ok ? res.json() : null)
           .then(async data => {
             const needsSetup = !data || !data.company_type || data.company_type === 'advertiser';
@@ -37,7 +39,7 @@ function usePostLoginRedirect() {
             if (needsSetup) {
               // Sync Google profile data before setup
               try {
-                await fetch(`http://127.0.0.1:8000/api/accounts/${id}`, {
+                await fetch(`${ADV_BASE}/api/accounts/${id}`, {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
                   credentials: 'include',
