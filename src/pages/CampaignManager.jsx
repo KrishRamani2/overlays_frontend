@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { getBrands, addCampaign } from '../assets/overlaysStore'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import SubmitCampaignModal from './SubmitCampaignModal'
 import './SubmitCampaignModal.css'
 import { logout, getMe } from '../api/auth'
@@ -98,12 +98,14 @@ function isContiguous(indices) {
 
 export default function CampaignManager() {
   const navigate = useNavigate()
-  const [userId, setUserId] = useState('demo-id')
+  const { id } = useParams()
+  const [userId, setUserId] = useState(id || 'demo-id')
   useEffect(() => {
     getMe().then(u => {
-      if(u) setUserId(u.id || u._id || 'demo-id')
+      if(u && u.id) setUserId(u.id)
+      else if(u && u._id) setUserId(u._id)
     })
-  }, [])
+  }, [id])
   /* ── Campaign state ── */
   const [campaigns,        setCampaigns]       = useState([])
   const [activeCampaignId, setActiveCampaignId]= useState(null)

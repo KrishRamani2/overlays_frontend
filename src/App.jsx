@@ -21,7 +21,7 @@ function App() {
         <Route path="/streamer-dashboard" element={<StreamerDashboard />} />
         <Route path="/setup/profile" element={<ProfileSetup />} />
         <Route path="/login/advertiser" element={<AdvertiserLogin />} />
-        <Route path="/campaign-manager" element={<CampaignManager />} />
+        <Route path="/campaign-manager/:id?" element={<CampaignManager />} />
         <Route path="/advertiser-dashboard/:id" element={<AdvertiserDashboard />} />
         <Route path="/setup/advertiser/:id" element={<AdvertiserSetup />} />
           <Route path="/streamer-dashboard" element={<StreamerDashboard />} />

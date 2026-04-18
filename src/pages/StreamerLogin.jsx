@@ -65,7 +65,7 @@ export default function StreamerLogin() {
         const hasSetup = localStorage.getItem(`setup_done_${user.id}`)
         navigate(hasSetup ? '/streamer-dashboard' : '/setup/profile', { replace: true })
       } else if (user && user.role === 'advertiser') {
-        navigate('/campaign-manager', { replace: true })
+        navigate(`/campaign-manager/${user.id || user._id || 'demo-id'}`, { replace: true })
       } else {
         setChecking(false)
       }

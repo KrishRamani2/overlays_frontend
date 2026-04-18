@@ -179,10 +179,15 @@ export default function AdvertiserDashboard() {
       .catch(err => console.error('Failed to fetch company info', err))
   }, [])
 
-  const handleNav = (id) => {
-    if (id === 'campaigns') { navigate('/campaign-manager'); return }
-    setActivePage(id)
+  const handleNav = (navId) => {
+    if (navId === 'campaigns') { navigate(`/campaign-manager/${id || 'demo-id'}`); return }
+    setActivePage(navId)
     setSelectedBrand(null)
+    if (navId === 'overview') {
+      navigate(`/advertiser-dashboard/${id || 'demo-id'}`, { replace: true })
+    } else {
+      navigate(`/advertiser-dashboard/${id || 'demo-id'}?page=${navId}`, { replace: true })
+    }
   }
 
   const handleLogout = () => {
@@ -296,7 +301,7 @@ export default function AdvertiserDashboard() {
                   <h1 className="ad-page-title">Good morning, <em>{user.name.split(' ')[0]}.</em></h1>
                 </div>
                 <div className="ad-page-actions">
-                  <button className="ad-btn-ghost" onClick={() => navigate('/campaign-manager')}>+ New Campaign</button>
+                  <button className="ad-btn-ghost" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>+ New Campaign</button>
                 </div>
               </div>
 
@@ -415,7 +420,7 @@ export default function AdvertiserDashboard() {
                   </div>
                 </div>
                 <div className="ad-page-actions">
-                  <button className="ad-btn-primary" onClick={() => navigate('/campaign-manager')}>
+                  <button className="ad-btn-primary" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
                     + New Campaign
                   </button>
                 </div>
@@ -448,7 +453,7 @@ export default function AdvertiserDashboard() {
                     <div className="ad-eyebrow">Campaigns</div>
                     <h2 className="ad-card-title">All campaigns <em>for {activeBrand.name}</em></h2>
                   </div>
-                  <button className="ad-btn-ghost ad-btn-sm" onClick={() => navigate('/campaign-manager')}>
+                  <button className="ad-btn-ghost ad-btn-sm" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
                     Manage →
                   </button>
                 </div>
@@ -487,7 +492,7 @@ export default function AdvertiserDashboard() {
                       {brandCampaigns
                         .filter(c => brandStatusFilter === 'all' || c.status === brandStatusFilter)
                         .map(c => (
-                          <tr key={c.id} className="ad-table-row" onClick={() => navigate('/campaign-manager')}>
+                          <tr key={c.id} className="ad-table-row" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
                             <td>
                               <span className="ad-table-name">{c.name}</span>
                               <span className="ad-table-id">{c.id}</span>
