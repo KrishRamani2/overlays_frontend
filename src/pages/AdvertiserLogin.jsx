@@ -38,10 +38,37 @@ export default function AdvertiserLogin() {
     const err = params.get('error')
     if (err) setError(ERROR_MESSAGES[err] || 'Sign-in failed. Please try again.')
 
-    getMe().then(user => {
+    getMe().then(async user => {
       if (user && user.role === 'advertiser') {
         const id = user.id || user._id || 'demo-id';
-        navigate(`/setup/advertiser/${id}`, { replace: true })
+        try {
+          const res = await fetch(`http://127.0.0.1:8000/api/accounts/${id}`, { credentials: 'include' });
+          const data = res.ok ? await res.json() : null;
+          const needsSetup = !data || !data.company_type || data.company_type === 'advertiser';
+
+          if (needsSetup) {
+            // Sync Google profile data before setup
+            await fetch(`http://127.0.0.1:8000/api/accounts/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                name: user.name,
+                picture: user.picture,
+                email: user.email
+              })
+            }).catch(e => console.error("Failed to sync profile", e));
+            
+            navigate(`/setup/advertiser/${id}`, { replace: true });
+          } else {
+            navigate(`/advertiser-dashboard/${id}?type=${data.company_type}`, { replace: true });
+          }
+          return;
+        } catch (err) {
+          console.error("Failed to check existing account data", err);
+          navigate(`/setup/advertiser/${id}`, { replace: true });
+          return;
+        }
       } else {
         setChecking(false)
       }

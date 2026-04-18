@@ -133,8 +133,8 @@ export default function AdvertiserDashboard() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const companyType = searchParams.get('type') || 'agency' // 'single' or 'agency'
-  const isSingleBrand = companyType === 'single'
+  const companyType = searchParams.get('type') || 'agency' // 'brands' or 'agency'
+  const isSingleBrand = companyType === 'brands'
   const [activePage, setActivePage]         = useState(() => {
     const page = searchParams.get('page')
     return (page && ['overview','billing','settings'].includes(page)) ? page : 'overview'

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { getAdvertiserMe } from '../api/auth';
 import './AdvertiserSetup.css';
 
 const LogoIcon = () => (
@@ -35,7 +36,7 @@ export default function AdvertiserSetup() {
   const { id } = useParams();
 
   const [step, setStep] = useState(1);
-  const [type, setType] = useState(''); // 'single' or 'agency'
+  const [type, setType] = useState(''); // 'brands' or 'agency'
   const [isGstVerified, setIsGstVerified] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showGstModal, setShowGstModal] = useState(false);
@@ -53,7 +54,7 @@ export default function AdvertiserSetup() {
     panCard: ''
   });
 
-  // For single brand flow
+  // For brands flow
   const [brandInfo, setBrandInfo] = useState({
     brandName: '',
     brandDescription: '',
@@ -65,19 +66,34 @@ export default function AdvertiserSetup() {
 
   const STEPS = type === 'agency' ? AGENCY_STEPS : BRAND_STEPS;
 
-  React.useEffect(() => {
+  const [userDetails, setUserDetails] = useState({ name: '', picture: '' });
+
+  useEffect(() => {
     if (id) {
-      fetch(`http://localhost:8000/api/company/${id}`)
+      getAdvertiserMe(id).then(data => {
+        if (data) {
+          setUserDetails({
+            name: data.name || '',
+            picture: data.picture || ''
+          });
+          setCompanyData(prev => ({ ...prev, email: prev.email || data.email || '' }));
+        }
+      });
+      
+      // Check if data is already available
+      fetch(`http://127.0.0.1:8000/api/accounts/${id}`, { credentials: 'include' })
         .then(res => {
           if (res.ok) return res.json();
           throw new Error('Not found');
         })
         .then(data => {
-          if (data && data.name) {
-            navigate(`/advertiser-dashboard/${id}`, { replace: true });
+          if (data && (data.company_type === 'brands' || data.company_type === 'agency')) {
+            navigate(`/advertiser-dashboard/${id}?type=${data.company_type}`, { replace: true });
           }
         })
-        .catch(() => {});
+        .catch(err => {
+          console.error("Failed to check existing account data", err);
+        });
     }
   }, [id, navigate]);
 
@@ -139,20 +155,21 @@ export default function AdvertiserSetup() {
   const saveCompanyAndProceed = async (nextStep) => {
     if (!validateCompanyData()) return;
     try {
-      await fetch(`http://localhost:8000/api/company/${id || 'demo-id'}`, {
+      await fetch(`http://127.0.0.1:8000/api/accounts/${id || 'demo-id'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          company_type: type,
+          company_type: type === 'agency' ? 'agency' : 'brands',
+          gst_number: companyData.registered ? companyData.gstin : '',
+          pan_card: companyData.registered ? companyData.panCard : '',
           company_name: companyData.name,
-          email: companyData.email,
           address: companyData.address,
           phone: companyData.phone,
           target_audience: companyData.targetAudience,
           web_link: companyData.webLink,
-          gst_number: companyData.registered ? companyData.gstin : '',
-          pan_card: companyData.registered ? companyData.panCard : '',
-          name: companyData.name,
+          email: companyData.email,
+          name: userDetails.name || companyData.name,
+          picture: userDetails.picture || ''
         })
       });
     } catch (err) {
@@ -169,7 +186,25 @@ export default function AdvertiserSetup() {
 
   const addBrand = () => setBrands([...brands, { brandName: '', brandDescription: '', target: '' }]);
 
-  const finishSetup = () => {
+  const finishSetup = async () => {
+    try {
+      const brandList = type === 'agency' ? brands : [brandInfo];
+      for (const b of brandList) {
+        if (!b.brandName) continue;
+        await fetch(`http://127.0.0.1:8000/api/accounts/${id || 'demo-id'}/brands`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            brand_name: b.brandName,
+            target_audience: b.target,
+            brand_description: b.brandDescription,
+            brand_logo: ""
+          })
+        });
+      }
+    } catch (err) {
+      console.error('Failed to save brand data', err);
+    }
     navigate(`/advertiser-dashboard/${id || 'demo-id'}?type=${type}`);
   };
 
@@ -214,7 +249,7 @@ export default function AdvertiserSetup() {
             <p className="as-sub">Select the option that best describes you.</p>
 
             <div className="as-options">
-              <button className={`as-opt ${type === 'single' ? 'on' : ''}`} onClick={() => setType('single')}>
+              <button className={`as-opt ${type === 'brands' ? 'on' : ''}`} onClick={() => setType('brands')}>
                 <div className="as-opt-icon">🏷️</div>
                 <div className="as-opt-text">
                   <h3>Single Brand</h3>
@@ -326,7 +361,7 @@ export default function AdvertiserSetup() {
         {/* ════════════════════════════════════════
            STEP 3 (Single Brand) — Brand Details
         ════════════════════════════════════════ */}
-        {step === 3 && type === 'single' && (
+        {step === 3 && type === 'brands' && (
           <div className="as-card as-fade-in">
             <div className="as-badge brand">Step 3 · Brand</div>
             <h1 className="as-title">Brand Details</h1>

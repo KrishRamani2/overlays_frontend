@@ -29,7 +29,35 @@ function usePostLoginRedirect() {
         navigate(hasSetup ? '/streamer-dashboard' : '/setup/profile', { replace: true })
       } else if (user.role === 'advertiser') {
         const id = user.id || user._id || 'demo-id';
-        navigate(`/setup/advertiser/${id}`, { replace: true })
+        fetch(`http://127.0.0.1:8000/api/accounts/${id}`, { credentials: 'include' })
+          .then(res => res.ok ? res.json() : null)
+          .then(async data => {
+            const needsSetup = !data || !data.company_type || data.company_type === 'advertiser';
+            
+            if (needsSetup) {
+              // Sync Google profile data before setup
+              try {
+                await fetch(`http://127.0.0.1:8000/api/accounts/${id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({
+                    name: user.name,
+                    picture: user.picture,
+                    email: user.email
+                  })
+                });
+              } catch (err) {
+                console.error("Failed to sync profile data", err);
+              }
+              navigate(`/setup/advertiser/${id}`, { replace: true });
+            } else {
+              navigate(`/advertiser-dashboard/${id}?type=${data.company_type}`, { replace: true });
+            }
+          })
+          .catch(() => {
+            navigate(`/setup/advertiser/${id}`, { replace: true });
+          });
       } else if (user.role === 'admin') {
         navigate('/admin/control', { replace: true })
       }
