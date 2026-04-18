@@ -15,7 +15,7 @@ const LogoIcon = () => (
   </svg>
 )
 
-const brands = getBrands()
+const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
 
 const AD_TYPES = [
   { id: 'text_image', label: 'Text + Image', icon: '▤' },
@@ -106,6 +106,14 @@ export default function CampaignManager() {
       else if(u && u._id) setUserId(u._id)
     })
   }, [id])
+
+  useEffect(() => {
+    if (!userId || userId === 'demo-id') return
+    fetch(`${ADV_BASE}/api/accounts/${userId}/brands`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setAvailableBrands(data))
+      .catch(err => console.error("Failed to fetch brands", err))
+  }, [userId])
   /* ── Campaign state ── */
   const [campaigns,        setCampaigns]       = useState([])
   const [activeCampaignId, setActiveCampaignId]= useState(null)
@@ -113,6 +121,7 @@ export default function CampaignManager() {
   const [duration,         setDuration]        = useState(10)
   const [isEditing,        setIsEditing]       = useState(false)
   const [showSubmitModal, setShowSubmitModal] = useState(false)
+  const [availableBrands, setAvailableBrands] = useState([])
 
   /* ── Ad variations ── */
   const [ads,          setAds]         = useState([defaultAd(0)])
@@ -201,40 +210,96 @@ export default function CampaignManager() {
     setActiveCampaignId(null); setAds([defaultAd(0)]); setCurrentAdIdx(0)
     setSelected(null)
   }
-  const saveCampaign = () => {
+
+  const getCampaignPayload = () => ({
+    campaign_id: campaignId,
+    campaign_name: currentAd.visibleName || campaignId,
+    duration_seconds: duration,
+    ads: ads.map(ad => ({
+      brand_id: parseInt(ad.brand) || 0,
+      ad_name: ad.visibleName || ad.name,
+      duration_seconds: duration,
+      ad_type: ad.type,
+      ad_copy: ad.text,
+      text_color: ad.fontColor,
+      text_style: JSON.stringify(ad.styles),
+      image_url: ad.media,
+      image_rotate: ad.imgRotate || 0,
+      image_width: Math.round(ad.layout.img.w),
+      lock_aspect_ratio: ad.imgLockRatio,
+      z_order: ad.zOrder.img,
+      text_z_order: ad.zOrder.text,
+      content_zoom: ad.contentScale,
+      banner_background_color: ad.bgColor,
+      canvas_background: canvasBgColor,
+      stream_background_url: canvasBgImage,
+      entrance_animation: ad.animType,
+      animation_speed: ad.animSpeed,
+      grid_cell_placement: (ad.gridSelection || []).join(',')
+    }))
+  });
+
+  const saveCampaign = async () => {
     if (!campaignId.trim()) { alert('Campaign ID is required'); return }
-    // Just save locally — don't submit yet
-    const payload = { id: campaignId, duration, ads, status: 'pending', savedAt: new Date().toISOString() }
-    setCampaigns(prev => {
-      const i = prev.findIndex(c => c.id === campaignId)
-      if (i >= 0) { const n = [...prev]; n[i] = payload; return n }
-      return [...prev, payload]
-      })
-    setActiveCampaignId(campaignId); setIsEditing(true)
+    
+    const payload = getCampaignPayload();
+
+    try {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const localData = { id: campaignId, duration, ads, status: 'pending', savedAt: new Date().toISOString() }
+        setCampaigns(prev => {
+          const i = prev.findIndex(c => c.id === campaignId)
+          if (i >= 0) { const n = [...prev]; n[i] = localData; return n }
+          return [...prev, localData]
+        })
+        setActiveCampaignId(campaignId); setIsEditing(true)
+        alert(`✓ Campaign "${campaignId}" saved successfully!`);
+      } else {
+        const errData = await res.json();
+        alert(`Failed to save campaign: ${errData.detail || 'Server error'}`);
+      }
+    } catch (err) {
+      console.error("Save error:", err);
+      alert("Failed to connect to the server.");
     }
+  }
 
   const handleSubmitClick = () => {
     if (!campaignId.trim()) { alert('Campaign ID is required'); return }
-    saveCampaign()           // save first, then open modal
     setShowSubmitModal(true)
   }
 
-  const handleModalConfirm = ({ tier, exclusive, daysLive, budgetMin, budgetMax }) => {
-    const brandId = currentAd.brand  // ← this is where brand from the select is read
-    addCampaign({
-      id:        campaignId,
-      brandId,
-      name:      currentAd.visibleName || campaignId,
-      budgetMin,
-      budgetMax,
-      tier,
-      exclusive,
-      daysLive,
-      ads,
-    })
-    setShowSubmitModal(false)
-    alert(`✓ ${ads.length} variant${ads.length !== 1 ? 's' : ''} submitted for review!`)
-  }
+  const handleModalConfirm = async ({ tier, exclusive, daysLive, budgetMin, budgetMax }) => {
+    const payload = getCampaignPayload();
+
+    try {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        setShowSubmitModal(false);
+        alert(`✓ Campaign "${campaignId}" submitted successfully for review!`);
+        initNew(); 
+      } else {
+        const errData = await res.json();
+        alert(`Failed to submit campaign: ${errData.detail || 'Server error'}`);
+      }
+    } catch (err) {
+      console.error("Submission error:", err);
+      alert("Failed to connect to the server.");
+    }
+  };
 
 
   const loadCampaign = (c) => {
@@ -267,27 +332,93 @@ export default function CampaignManager() {
   }
   const stopLoop = () => { clearTimeout(loopTimer.current); setAnimVisible(true); setAnimOffset('none') }
 
+  /* ── Cloudinary Upload ── */
+  const uploadToCloudinary = async (file) => {
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const apiKey    = import.meta.env.VITE_CLOUDINARY_API_KEY;
+    const apiSecret = import.meta.env.VITE_CLOUDINARY_API_SECRET;
+
+    if (!cloudName || !apiKey || !apiSecret || apiKey === 'your_api_key') {
+      console.error("Cloudinary credentials missing or not configured in .env");
+      return null;
+    }
+
+    const timestamp = Math.round(new Date().getTime() / 1000);
+    const params = `timestamp=${timestamp}${apiSecret}`;
+    
+    // Generate SHA-1 signature
+    const msgUint8 = new TextEncoder().encode(params);
+    const hashBuffer = await crypto.subtle.digest('SHA-1', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("timestamp", timestamp);
+    formData.append("api_key", apiKey);
+    formData.append("signature", signature);
+
+    try {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+      if (data.secure_url) {
+        console.log("Cloudinary Upload Success:", data.secure_url);
+        return data.secure_url;
+      }
+      console.error("Upload failed", data);
+      return null;
+    } catch (err) {
+      console.error("Cloudinary upload error", err);
+      return null;
+    }
+  };
+
   /* ── File uploads ── */
-  const handleMediaFile = (e) => {
-    const file = e.target.files[0]; if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => {
-      if (file.type.startsWith('image')) {
+  const handleMediaFile = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    
+    // Check if it's image or gif
+    if (!file.type.startsWith('image/')) {
+      alert("Only images and GIFs are allowed!");
+      return;
+    }
+
+    const url = await uploadToCloudinary(file);
+    if (url) {
+      const img = new Image()
+      img.onload = () => updateAd({ media: url, imgNaturalW: img.width, imgNaturalH: img.height })
+      img.src = url
+    } else {
+      // Fallback to local preview if upload fails (optional)
+      const reader = new FileReader()
+      reader.onload = ev => {
         const img = new Image()
         img.onload = () => updateAd({ media: ev.target.result, imgNaturalW: img.width, imgNaturalH: img.height })
         img.src = ev.target.result
-      } else {
-        updateAd({ media: ev.target.result })
       }
+      reader.readAsDataURL(file)
     }
-    reader.readAsDataURL(file)
   }
 
-  const handleCanvasBgFile = (e) => {
-    const file = e.target.files[0]; if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => setCanvasBgImage(ev.target.result)
-    reader.readAsDataURL(file)
+  const handleCanvasBgFile = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    
+    if (!file.type.startsWith('image/')) {
+      alert("Only images and GIFs are allowed!");
+      return;
+    }
+
+    const url = await uploadToCloudinary(file);
+    if (url) {
+      setCanvasBgImage(url);
+    } else {
+      const reader = new FileReader()
+      reader.onload = ev => setCanvasBgImage(ev.target.result)
+      reader.readAsDataURL(file)
+    }
   }
 
   /* ── Snap helper ── */
@@ -550,8 +681,8 @@ export default function CampaignManager() {
               <label className="cm-field-label">Brand</label>
               <select className="cm-select" value={currentAd.brand} onChange={e=>updateAd({brand:e.target.value})}>
                 <option value="">Select a brand</option>
-                {brands.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
+                {availableBrands.map(b => (
+                  <option key={b.id} value={b.id}>{b.brand_name}</option>
                 ))}
               </select>
             </div>
@@ -627,7 +758,7 @@ export default function CampaignManager() {
                   value={currentAd.media} onChange={e=>updateAd({media:e.target.value})}/>
                 <label className="cm-upload-btn">
                   ↑ Upload file
-                  <input type="file" accept="image/*,video/*" style={{display:'none'}} onChange={handleMediaFile}/>
+                  <input type="file" accept="image/png,image/jpeg,image/gif" style={{display:'none'}} onChange={handleMediaFile}/>
                 </label>
 
                 {/* Image transform controls */}
@@ -721,7 +852,7 @@ export default function CampaignManager() {
               <div className="cm-canvas-bg-row">
                 <label className="cm-upload-btn" style={{marginTop:'0.5rem'}}>
                   ↑ Upload stream BG
-                  <input type="file" accept="image/*" style={{display:'none'}} onChange={handleCanvasBgFile}/>
+                  <input type="file" accept="image/png,image/jpeg,image/gif" style={{display:'none'}} onChange={handleCanvasBgFile}/>
                 </label>
                 {canvasBgImage && (
                   <button className="cm-clear-bg" onClick={()=>setCanvasBgImage('')}>✕ Remove</button>
