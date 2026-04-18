@@ -106,13 +106,19 @@ export default function CampaignManager() {
       else if(u && u._id) setUserId(u._id)
     })
   }, [id])
-
   useEffect(() => {
     if (!userId || userId === 'demo-id') return
+    // Fetch brands
     fetch(`${ADV_BASE}/api/accounts/${userId}/brands`, { credentials: 'include' })
       .then(res => res.ok ? res.json() : [])
       .then(data => setAvailableBrands(data))
       .catch(err => console.error("Failed to fetch brands", err))
+
+    // Fetch campaigns
+    fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setCampaigns(data))
+      .catch(err => console.error("Failed to fetch campaigns", err))
   }, [userId])
   /* ── Campaign state ── */
   const [campaigns,        setCampaigns]       = useState([])
@@ -636,11 +642,14 @@ export default function CampaignManager() {
               <div className="cm-campaign-list">
                 {campaigns.length===0 && <div className="cm-empty-list">No campaigns yet.<br/>Click + to create one.</div>}
                 {campaigns.map(c => (
-                  <div key={c.id}
-                    className={`cm-c-item ${activeCampaignId===c.id?'active':''}`}
+                  <div key={c.campaign_id || c.id}
+                    className={`cm-c-item ${activeCampaignId===(c.campaign_id || c.id)?'active':''}`}
                     onClick={()=>loadCampaign(c)}>
-                    <span className="cm-c-name">{c.id}</span>
-                    <span className={`cm-c-status cm-status-${c.status}`}>{c.status}</span>
+                    <div className="cm-c-info">
+                      <span className="cm-c-name">{c.campaign_name || c.campaign_id || 'Untitled'}</span>
+                      <span className="cm-c-sub">{c.campaign_id}</span>
+                    </div>
+                    <span className={`cm-c-status cm-status-pending`}>pending</span>
                   </div>
                 ))}
               </div>
