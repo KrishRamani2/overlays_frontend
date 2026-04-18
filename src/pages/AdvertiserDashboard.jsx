@@ -157,6 +157,8 @@ export default function AdvertiserDashboard() {
   }[chartView] || AGENCY_MONTHLY
   
   const [user, setUser] = useState(AGENCY_USER)
+  const [brandsList, setBrandsList] = useState([])
+  const [loadingBrands, setLoadingBrands] = useState(true)
 
   useEffect(() => {
     if (!id) return;
@@ -174,6 +176,18 @@ export default function AdvertiserDashboard() {
         setUser(prev => ({ ...prev, name: 'Advertiser' }))
       }
     }).catch(err => console.error('Failed to fetch user profile', err))
+
+    // Fetch real brands
+    fetch(`${ADV_BASE}/api/accounts/${id}/brands`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        setBrandsList(data)
+        setLoadingBrands(false)
+      })
+      .catch(err => {
+        console.error('Failed to fetch brands', err)
+        setLoadingBrands(false)
+      })
   }, [id])
 
   const saveSettings = async (newData) => {
@@ -262,11 +276,30 @@ export default function AdvertiserDashboard() {
 
   const [refresh, setRefresh] = useState(0)
 
-  const BRANDS        = getAllBrandsWithStats()
-  const totalSpend    = BRANDS.reduce((s, b) => s + b.spendRaw, 0)
-  const totalStreams   = BRANDS.reduce((s, b) => s + b.streams, 0)
-  const totalCampaigns = BRANDS.reduce((s, b) => s + b.campaigns, 0)
-  const totalBudgetAllocated = BRANDS.reduce((s, b) => s + (b.budgetAllocated || b.spendRaw * 1.4), 0)
+  // Map real brands to UI format and merge with mock stats for demo
+  const MOCK_STATS_TEMPLATE = {
+    spend: '₹42K', spendRaw: 42000,
+    streams: 18, campaigns: 3,
+    budgetAllocated: 60000,
+    color: '#3B5BFF'
+  }
+
+  const BRANDS = brandsList.length > 0 
+    ? brandsList.map((b, i) => ({
+        ...MOCK_STATS_TEMPLATE,
+        id: b.id,
+        name: b.brand_name,
+        category: b.target_audience,
+        logo: b.brand_logo || (b.brand_name ? b.brand_name[0] : 'B'),
+        color: ['#3B5BFF', '#7C3AED', '#EC4899', '#10B981', '#F59E0B'][i % 5],
+        brand_description: b.brand_description
+      }))
+    : (loadingBrands ? [] : getAllBrandsWithStats())
+
+  const totalSpend    = BRANDS.reduce((s, b) => s + (b.spendRaw || 0), 0)
+  const totalStreams   = BRANDS.reduce((s, b) => s + (b.streams || 0), 0)
+  const totalCampaigns = BRANDS.reduce((s, b) => s + (b.campaigns || 0), 0)
+  const totalBudgetAllocated = BRANDS.reduce((s, b) => s + (b.budgetAllocated || (b.spendRaw ? b.spendRaw * 1.4 : 0)), 0)
   const totalBudgetRemaining = totalBudgetAllocated - totalSpend
 
   const activeBrand    = selectedBrand ? BRANDS.find(b => b.id === selectedBrand) : null
@@ -1047,12 +1080,19 @@ export default function AdvertiserDashboard() {
                     <button className="ad-btn-primary ad-btn-sm">+ Add brand</button>
                   </div>
                   <div className="ad-brand-settings-list">
+                    {loadingBrands && <div style={{padding:'1rem', color:'var(--muted)'}}>Loading brands...</div>}
+                    {!loadingBrands && BRANDS.length === 0 && <div style={{padding:'1rem', color:'var(--muted)'}}>No brands found.</div>}
                     {BRANDS.map(brand => (
                       <div key={brand.id} className="ad-brand-settings-row">
                         <div className="ad-brand-logo-sm" style={{ background: brand.color, color: 'white' }}>{brand.logo}</div>
                         <div className="ad-breakdown-info">
                           <span className="ad-breakdown-name">{brand.name}</span>
                           <span className="ad-breakdown-sub">{brand.category}</span>
+                        </div>
+                        <div className="ad-breakdown-info" style={{maxWidth:'300px'}}>
+                           <span className="ad-breakdown-sub" style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
+                             {brand.brand_description}
+                           </span>
                         </div>
                         <button className="ad-btn-ghost ad-btn-sm">Edit</button>
                       </div>
