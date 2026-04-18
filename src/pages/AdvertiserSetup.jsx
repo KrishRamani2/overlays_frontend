@@ -9,19 +9,31 @@ const LogoIcon = () => (
     <rect x="2"  y="14" width="10" height="10" rx="3" fill="#3B5BFF" opacity="0.4"/>
     <rect x="14" y="14" width="10" height="10" rx="3" fill="#3B5BFF" opacity="0.7"/>
   </svg>
-)
+);
+
+const CheckSvg = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 8.5 6.5 12 13 4"/>
+  </svg>
+);
+
+const STEPS = [
+  { n: 1, label: 'Account Type' },
+  { n: 2, label: 'Agency Info' },
+  { n: 3, label: 'Brands' },
+];
 
 export default function AdvertiserSetup() {
   const navigate = useNavigate();
   const { id } = useParams();
-  
+
   const [step, setStep] = useState(1);
-  const [type, setType] = useState(''); // 'single' or 'agency'
+  const [type, setType] = useState('');
   const [isGstVerified, setIsGstVerified] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showGstModal, setShowGstModal] = useState(false);
   const [fetchedDetails, setFetchedDetails] = useState(null);
-  
+
   const [companyData, setCompanyData] = useState({
     registered: true,
     name: '',
@@ -45,23 +57,17 @@ export default function AdvertiserSetup() {
         })
         .then(data => {
           if (data && data.name) {
-            // Company is already set up, skip directly to dashboard
             navigate(`/advertiser-dashboard/${id}`, { replace: true });
           }
         })
-        .catch(err => {
-          // Needs setup, continue
-        });
+        .catch(() => {});
     }
   }, [id, navigate]);
 
   const handleCompanyChange = (e) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value, type: t, checked } = e.target;
     if (name === 'gstin') setIsGstVerified(false);
-    setCompanyData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
+    setCompanyData(prev => ({ ...prev, [name]: t === 'checkbox' ? checked : value }));
   };
 
   const verifyGst = () => {
@@ -110,7 +116,6 @@ export default function AdvertiserSetup() {
       }
     }
     setErrorMsg('');
-
     try {
       await fetch(`http://localhost:8000/api/company/${id || 'demo-id'}`, {
         method: 'POST',
@@ -123,47 +128,75 @@ export default function AdvertiserSetup() {
     setStep(3);
   };
 
-  const handleBrandChange = (index, field, value) => {
-    const newBrands = [...brands];
-    newBrands[index][field] = value;
-    setBrands(newBrands);
+  const handleBrandChange = (idx, field, val) => {
+    const b = [...brands];
+    b[idx][field] = val;
+    setBrands(b);
   };
 
   const addBrand = () => setBrands([...brands, { brandName: '', brandDescription: '', target: '' }]);
+  const finishSetup = () => navigate(`/advertiser-dashboard/${id || 'demo-id'}`);
 
-  const finishSetup = () => {
-    navigate(`/advertiser-dashboard/${id || 'demo-id'}`);
-  };
+  const stepState = (n) => n < step ? 'done' : n === step ? 'active' : '';
 
   return (
     <div className="as-page">
-      <div className="as-arc"></div>
-      <div className="as-dots"></div>
+      <div className="as-arc" />
+      <div className="as-dots" />
 
       <div className="as-header">
         <a href="/" className="as-logo"><LogoIcon /> Overlays</a>
       </div>
 
+      {/* ── STEPPER ── */}
+      <div className="as-stepper-bar">
+        <div className="as-stepper">
+          {STEPS.map((s, i) => (
+            <div className="as-step" key={s.n}>
+              <div className="as-step-node">
+                <div className={`as-step-dot ${stepState(s.n)}`}>
+                  {stepState(s.n) === 'done' ? <CheckSvg /> : s.n}
+                </div>
+                <span className={`as-step-txt ${stepState(s.n)}`}>{s.label}</span>
+              </div>
+              {i < STEPS.length - 1 && (
+                <div className={`as-step-line ${stepState(s.n) === 'done' ? 'done' : ''}`} />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="as-container">
+
+        {/* ════ STEP 1 ════ */}
         {step === 1 && (
           <div className="as-card as-fade-in">
-            <h1 className="as-title">Welcome. Let's set up your account.</h1>
-            <p className="as-sub">Are you representing a single brand or an advertising agency?</p>
+            <h1 className="as-title">How will you use Overlays?</h1>
+            <p className="as-sub">Select the option that best describes you.</p>
+
             <div className="as-options">
-              <button className={`as-option-card ${type === 'single' ? 'selected' : ''}`} onClick={() => setType('single')}>
-                <div className="as-option-icon">🏷️</div>
-                <h3>Single Brand</h3>
-                <p>I represent one specific brand</p>
+              <button className={`as-opt ${type === 'single' ? 'on' : ''}`} onClick={() => setType('single')}>
+                <div className="as-opt-icon">🏷️</div>
+                <div className="as-opt-text">
+                  <h3>Single Brand</h3>
+                  <p>I represent one specific brand</p>
+                </div>
+                <div className="as-opt-radio" />
               </button>
-              <button className={`as-option-card ${type === 'agency' ? 'selected' : ''}`} onClick={() => setType('agency')}>
-                <div className="as-option-icon">🏢</div>
-                <h3>Advertiser Agency</h3>
-                <p>I manage campaigns for multiple brands</p>
+              <button className={`as-opt ${type === 'agency' ? 'on' : ''}`} onClick={() => setType('agency')}>
+                <div className="as-opt-icon">🏢</div>
+                <div className="as-opt-text">
+                  <h3>Advertiser Agency</h3>
+                  <p>I manage campaigns for multiple brands</p>
+                </div>
+                <div className="as-opt-radio" />
               </button>
             </div>
-            <div className="as-footer">
-              <button className="as-btn-primary" disabled={!type} onClick={() => {
-                if(type === 'single') finishSetup(); 
+
+            <div className="as-foot">
+              <button className="as-btn" disabled={!type} onClick={() => {
+                if (type === 'single') finishSetup();
                 else setStep(2);
               }}>
                 Continue →
@@ -172,126 +205,131 @@ export default function AdvertiserSetup() {
           </div>
         )}
 
+        {/* ════ STEP 2 — Agency Info ════ */}
         {step === 2 && (
           <div className="as-card as-fade-in">
-            <h1 className="as-title">Company Data</h1>
-            <p className="as-sub">Please provide details about your agency.</p>
-            
-            <div className="as-form-grid">
-              <label className="as-checkbox-label" style={{ gridColumn: '1 / -1', marginBottom: '0.5rem' }}>
-                <input type="checkbox" name="registered" checked={companyData.registered} onChange={handleCompanyChange} />
-                <span>Is your company registered?</span>
-              </label>
+            <div className="as-badge agency">Step 2 · Agency</div>
+            <h1 className="as-title">Agency Details</h1>
+            <p className="as-sub">Tell us about your advertising agency.</p>
 
-              {companyData.registered && (
-                <>
-                  <div className="as-input-group" style={{ position: 'relative' }}>
+            <label className="as-check-label">
+              <input type="checkbox" name="registered" checked={companyData.registered} onChange={handleCompanyChange} />
+              My company is registered
+            </label>
+
+            {companyData.registered && (
+              <>
+                <div className="as-section-label">Registration</div>
+                <div className="as-grid">
+                  <div className="as-field">
                     <label>GST Number *</label>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <input type="text" name="gstin" value={companyData.gstin} onChange={handleCompanyChange} placeholder="Enter GST Number" style={{ flex: 1 }} />
-                      <button className="as-btn-primary" onClick={verifyGst} style={{ padding: '0 1rem', whiteSpace: 'nowrap' }}>
-                        {isGstVerified ? '✓ Verified' : 'Verify & Fetch'}
+                    <div className="as-gst-row">
+                      <input type="text" name="gstin" value={companyData.gstin} onChange={handleCompanyChange} placeholder="Enter GST Number" />
+                      <button className={`as-verify ${isGstVerified ? 'ok' : ''}`} onClick={verifyGst}>
+                        {isGstVerified ? '✓ Verified' : 'Verify'}
                       </button>
                     </div>
                   </div>
-                  <div className="as-input-group">
+                  <div className="as-field">
                     <label>PAN Card *</label>
                     <input type="text" name="panCard" value={companyData.panCard} onChange={handleCompanyChange} placeholder="PAN Number" />
                   </div>
-                </>
-              )}
+                </div>
+              </>
+            )}
 
-              <div className="as-input-group">
+            <div className="as-section-label">Company Information</div>
+            <div className="as-grid">
+              <div className="as-field">
                 <label>Company Name *</label>
                 <input type="text" name="name" value={companyData.name} onChange={handleCompanyChange} placeholder="Enter company name" />
               </div>
-              <div className="as-input-group">
-                <label>Email ID *</label>
+              <div className="as-field">
+                <label>Email *</label>
                 <input type="email" name="email" value={companyData.email} onChange={handleCompanyChange} placeholder="company@email.com" />
               </div>
-              <div className="as-input-group" style={{ gridColumn: '1 / -1' }}>
+              <div className="as-field as-full">
                 <label>Address *</label>
                 <input type="text" name="address" value={companyData.address} onChange={handleCompanyChange} placeholder="Full address" />
               </div>
-              <div className="as-input-group">
-                <label>Phone Number *</label>
+              <div className="as-field">
+                <label>Phone *</label>
                 <input type="text" name="phone" value={companyData.phone} onChange={handleCompanyChange} placeholder="+91 00000 00000" />
               </div>
-              <div className="as-input-group">
+              <div className="as-field">
                 <label>Target Audience *</label>
-                <input type="text" name="targetAudience" value={companyData.targetAudience} onChange={handleCompanyChange} placeholder="e.g. Gamers, Tech Enthusiasts" />
+                <input type="text" name="targetAudience" value={companyData.targetAudience} onChange={handleCompanyChange} placeholder="e.g. Gamers, Tech" />
               </div>
-              
-              <div className="as-input-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Web Link *</label>
+              <div className="as-field as-full">
+                <label>Website *</label>
                 <input type="text" name="webLink" value={companyData.webLink} onChange={handleCompanyChange} placeholder="https://yourwebsite.com" />
               </div>
             </div>
 
-            {errorMsg && <div className="as-error-msg" style={{ color: '#EF4444', marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 500 }}>{errorMsg}</div>}
+            {errorMsg && <div className="as-err">{errorMsg}</div>}
 
-            <div className="as-footer-split">
-              <button className="as-btn-ghost" onClick={() => setStep(1)}>← Back</button>
-              <button className="as-btn-primary" onClick={handleNextStep2}>Next Step →</button>
+            <div className="as-foot-split">
+              <button className="as-btn-back" onClick={() => setStep(1)}>← Back</button>
+              <button className="as-btn" onClick={handleNextStep2}>Continue →</button>
             </div>
           </div>
         )}
 
+        {/* ════ STEP 3 — Brands ════ */}
         {step === 3 && (
-          <div className="as-card as-fade-in as-large-card">
-            <h1 className="as-title">Manage Brands</h1>
-            <p className="as-sub">Add the brands you are currently managing.</p>
+          <div className="as-card as-card-wide as-fade-in">
+            <div className="as-badge brand">Step 3 · Brands</div>
+            <h1 className="as-title">Manage Your Brands</h1>
+            <p className="as-sub">Add the brands your agency currently manages.</p>
 
-            <div className="as-brands-list">
-              {brands.map((brand, index) => (
-                <div key={index} className="as-brand-form">
-                  <div className="as-brand-header">Brand #{index + 1}</div>
-                  <div className="as-form-grid">
-                    <div className="as-input-group">
+            <div className="as-brands-scroll">
+              {brands.map((brand, i) => (
+                <div key={i} className="as-brand-card">
+                  <div className="as-brand-num"><span>{i + 1}</span> Brand #{i + 1}</div>
+                  <div className="as-grid">
+                    <div className="as-field">
                       <label>Brand Name</label>
-                      <input type="text" value={brand.brandName} onChange={(e) => handleBrandChange(index, 'brandName', e.target.value)} placeholder="Name of the brand" />
+                      <input type="text" value={brand.brandName} onChange={e => handleBrandChange(i, 'brandName', e.target.value)} placeholder="Name of the brand" />
                     </div>
-                    <div className="as-input-group">
+                    <div className="as-field">
                       <label>Target Audience</label>
-                      <input type="text" value={brand.target} onChange={(e) => handleBrandChange(index, 'target', e.target.value)} placeholder="Target demographic" />
+                      <input type="text" value={brand.target} onChange={e => handleBrandChange(i, 'target', e.target.value)} placeholder="Target demographic" />
                     </div>
-                    <div className="as-input-group" style={{ gridColumn: '1 / -1' }}>
-                      <label>Brand Description</label>
-                      <textarea value={brand.brandDescription} onChange={(e) => handleBrandChange(index, 'brandDescription', e.target.value)} placeholder="Brief description of the brand" rows="2"></textarea>
+                    <div className="as-field as-full">
+                      <label>Description</label>
+                      <textarea value={brand.brandDescription} onChange={e => handleBrandChange(i, 'brandDescription', e.target.value)} placeholder="Brief description of the brand" rows="2" />
                     </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <button className="as-btn-ghost" onClick={addBrand} style={{ marginTop: '1rem', width: '100%', justifyContent: 'center' }}>+ Add another brand</button>
+            <button className="as-add-brand" onClick={addBrand}>+ Add another brand</button>
 
-            <div className="as-footer-split">
-              <button className="as-btn-ghost" onClick={() => setStep(2)}>← Back</button>
-              <button className="as-btn-primary" onClick={finishSetup}>Complete Setup ✓</button>
+            <div className="as-foot-split">
+              <button className="as-btn-back" onClick={() => setStep(2)}>← Back</button>
+              <button className="as-btn" onClick={finishSetup}>Complete Setup ✓</button>
             </div>
           </div>
         )}
       </div>
 
-      {/* GST Verification Modal */}
+      {/* ── GST Modal ── */}
       {showGstModal && fetchedDetails && (
-        <div className="as-modal-overlay">
-          <div className="as-modal-content">
+        <div className="as-overlay">
+          <div className="as-modal">
             <h2>Company Details Found</h2>
-            <p className="as-muted">Please confirm if these details match your company.</p>
-            
-            <div className="as-details-list">
-              <div className="as-detail-item"><strong>Name:</strong> {fetchedDetails.name}</div>
-              <div className="as-detail-item"><strong>Email:</strong> {fetchedDetails.email}</div>
-              <div className="as-detail-item"><strong>Address:</strong> {fetchedDetails.address}</div>
-              <div className="as-detail-item"><strong>Phone:</strong> {fetchedDetails.phone}</div>
-              <div className="as-detail-item"><strong>PAN Card:</strong> {fetchedDetails.panCard}</div>
+            <p className="as-muted">Confirm if these details match your company.</p>
+            <div className="as-detail-list">
+              <div><strong>Name:</strong> {fetchedDetails.name}</div>
+              <div><strong>Email:</strong> {fetchedDetails.email}</div>
+              <div><strong>Address:</strong> {fetchedDetails.address}</div>
+              <div><strong>Phone:</strong> {fetchedDetails.phone}</div>
+              <div><strong>PAN:</strong> {fetchedDetails.panCard}</div>
             </div>
-
-            <div className="as-modal-actions">
-              <button className="as-btn-ghost" onClick={() => setShowGstModal(false)}>Cancel</button>
-              <button className="as-btn-primary" onClick={confirmGstDetails}>Confirm & Auto-fill</button>
+            <div className="as-modal-btns">
+              <button className="as-btn-back" onClick={() => setShowGstModal(false)}>Cancel</button>
+              <button className="as-btn" onClick={confirmGstDetails}>Confirm & Auto-fill</button>
             </div>
           </div>
         </div>
