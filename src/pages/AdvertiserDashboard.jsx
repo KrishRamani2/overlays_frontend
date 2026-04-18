@@ -115,6 +115,98 @@ function EarningsChart({ data }) {
   )
 }
 
+function WalletModal({ isOpen, onClose, currentBalance, onTopup, isLoading }) {
+  const [amount, setAmount] = useState('')
+  const [selectedPreset, setSelectedPreset] = useState(null)
+
+  const presets = [500, 1000, 2000, 5000, 10000]
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    const val = parseFloat(amount)
+    if (isNaN(val) || val <= 0) {
+      alert('Please enter a valid amount')
+      return
+    }
+    onTopup(val)
+  }
+
+  const handlePreset = (val) => {
+    setAmount(val.toString())
+    setSelectedPreset(val)
+  }
+
+  return (
+    <div className="ad-modal-overlay">
+      <div className="ad-modal-card wallet-modal">
+        <div className="ad-modal-header">
+          <div className="ad-modal-title-wrap">
+            <div className="ad-eyebrow">Wallet</div>
+            <h2 className="ad-modal-title">Add <em>funds</em></h2>
+          </div>
+          <button className="ad-modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="ad-modal-body">
+          <div className="wallet-balance-card">
+            <span className="wallet-balance-label">Current Balance</span>
+            <span className="wallet-balance-value">₹{parseFloat(currentBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
+
+          <form onSubmit={handleSubmit} className="wallet-form">
+            <div className="ad-form-group">
+              <label className="ad-label">Enter Amount (₹)</label>
+              <div className="amount-input-wrap">
+                <span className="currency-prefix">₹</span>
+                <input 
+                  type="number" 
+                  className="ad-input amount-input"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => {
+                    setAmount(e.target.value)
+                    setSelectedPreset(null)
+                  }}
+                  required
+                  min="1"
+                />
+              </div>
+            </div>
+
+            <div className="presets-grid">
+              {presets.map(p => (
+                <button 
+                  key={p} 
+                  type="button" 
+                  className={`preset-btn ${selectedPreset === p ? 'active' : ''}`}
+                  onClick={() => handlePreset(p)}
+                >
+                  + ₹{p.toLocaleString()}
+                </button>
+              ))}
+            </div>
+
+            <div className="wallet-info-note">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+              </svg>
+              Funds will be added instantly after successful payment.
+            </div>
+
+            <button 
+              type="submit" 
+              className="ad-btn-primary wallet-submit-btn" 
+              disabled={isLoading || !amount}
+            >
+              {isLoading ? 'Processing...' : 'Pay & Add Funds'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function StatusBadge({ status }) {
   return <span className={`ad-badge ad-badge-${status}`}>{status}</span>
 }
@@ -160,6 +252,10 @@ export default function AdvertiserDashboard() {
   const [brandsList, setBrandsList] = useState([])
   const [loadingBrands, setLoadingBrands] = useState(true)
 
+  const [wallet, setWallet] = useState({ balance_rupees: '0.00', balance_cents: 0 })
+  const [showWalletModal, setShowWalletModal] = useState(false)
+  const [isTopupLoading, setIsTopupLoading] = useState(false)
+
   useEffect(() => {
     if (!id) return;
     getAdvertiserMe(id).then(data => {
@@ -188,6 +284,14 @@ export default function AdvertiserDashboard() {
         console.error('Failed to fetch brands', err)
         setLoadingBrands(false)
       })
+
+    // Fetch Wallet
+    fetch(`${ADV_BASE}/api/accounts/${id}/billing/wallet`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) setWallet(data)
+      })
+      .catch(err => console.error('Failed to fetch wallet', err))
   }, [id])
 
   const saveSettings = async (newData) => {
@@ -274,6 +378,44 @@ export default function AdvertiserDashboard() {
     logoutAdvertiser()
   }
 
+  const handleTopup = async (amount) => {
+    setIsTopupLoading(true)
+    const idempotencyKey = `topup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const billingToken = import.meta.env.VITE_BILLING_TOPUP_TOKEN
+
+    try {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${id}/billing/wallet/topup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+          'X-Billing-Token': billingToken
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          amount_rupees: amount.toString(),
+          reference: 'Web Dashboard Topup',
+          metadata: { source: 'dashboard' }
+        })
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setWallet(data.wallet)
+        setShowWalletModal(false)
+        alert(`Successfully added ₹${amount} to your wallet!`)
+      } else {
+        const err = await res.json()
+        alert(`Failed to add amount: ${err.detail || 'Unknown error'}`)
+      }
+    } catch (err) {
+      console.error(err)
+      alert('Network error during topup')
+    } finally {
+      setIsTopupLoading(false)
+    }
+  }
+
   const [refresh, setRefresh] = useState(0)
 
   // Map real brands to UI format and merge with mock stats for demo
@@ -357,12 +499,15 @@ export default function AdvertiserDashboard() {
         </div>
         <div className="ad-topnav-right">
           {DEV_MODE && <span className="ad-dev-chip">Dev Mode</span>}
-          <button className="ad-wallet-btn" title="Wallet">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
-              <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
-              <path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/>
-            </svg>
+          <button className="ad-wallet-btn" title="Wallet" onClick={() => setShowWalletModal(true)}>
+            <div className="ad-wallet-content">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+                <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+                <path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/>
+              </svg>
+              <span className="ad-wallet-balance">₹{parseFloat(wallet.balance_rupees).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            </div>
           </button>
           <div className="ad-topnav-user">
             {user.picture ? (
@@ -1162,6 +1307,17 @@ export default function AdvertiserDashboard() {
           onDownload={(config) => {
             alert(`Generating ${config.fileType} report for ${config.brand} (Tier: ${config.tier}).\nPassword Protecion: ${config.locked ? 'Enabled' : 'Disabled'}`)
           }}
+        />
+      )}
+
+      {/* ══ WALLET MODAL ══ */}
+      {showWalletModal && (
+        <WalletModal 
+          isOpen={showWalletModal} 
+          onClose={() => setShowWalletModal(false)} 
+          currentBalance={wallet.balance_rupees}
+          onTopup={handleTopup}
+          isLoading={isTopupLoading}
         />
       )}
     </div>

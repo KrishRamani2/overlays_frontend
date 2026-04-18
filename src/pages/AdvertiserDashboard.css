@@ -699,3 +699,182 @@
 .ad-deactivated-btn:hover {
   background: #000; transform: translateY(-2px);
 }
+
+/* ── WALLET SPECIFIC ── */
+.ad-wallet-btn {
+  width: auto !important;
+  padding: 0 0.85rem !important;
+}
+.ad-wallet-content {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.ad-wallet-balance {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Wallet Modal Styles */
+.wallet-modal {
+  max-width: 420px !important;
+}
+.wallet-balance-card {
+  background: var(--blue-soft);
+  border: 1px solid var(--blue);
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+}
+.wallet-balance-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--blue);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.wallet-balance-value {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.wallet-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.amount-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.currency-prefix {
+  position: absolute;
+  left: 1rem;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+.amount-input {
+  padding-left: 2.2rem !important;
+  font-size: 1.1rem !important;
+  font-weight: 600 !important;
+}
+
+.presets-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.preset-btn {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ink2);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.preset-btn:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.preset-btn.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: white;
+}
+
+.wallet-info-note {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: var(--off);
+  padding: 0.75rem;
+  border-radius: 10px;
+  line-height: 1.4;
+}
+.wallet-info-note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.wallet-submit-btn {
+  width: 100%;
+  padding: 0.85rem !important;
+  font-size: 0.95rem !important;
+}
+
+/* Modal Overlay & Base Card (Reuse/Refine) */
+.ad-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  animation: ad-fade-in 0.25s ease-out;
+}
+@keyframes ad-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.ad-modal-card {
+  background: white;
+  border-radius: 24px;
+  width: 100%;
+  max-width: 600px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: ad-slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes ad-slide-up { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.ad-modal-header {
+  padding: 1.5rem 1.75rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ad-modal-title {
+  margin: 0;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+.ad-modal-title em { font-style: italic; font-weight: 400; }
+.ad-modal-close {
+  background: none; border: none; font-size: 1.5rem;
+  color: var(--muted); cursor: pointer; padding: 4px;
+  line-height: 1; transition: color 0.15s;
+}
+.ad-modal-close:hover { color: var(--ink); }
+.ad-modal-body { padding: 1.75rem; }
+
+.ad-form-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.ad-label { font-size: 0.78rem; font-weight: 600; color: var(--ink2); text-transform: uppercase; letter-spacing: 0.05em; }
+.ad-input {
+  background: var(--off);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  font-family: 'Geist', sans-serif;
+  font-size: 0.9rem;
+  outline: none;
+  transition: all 0.2s;
+}
+.ad-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,91,255,0.08); }
