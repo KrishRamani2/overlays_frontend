@@ -64,3 +64,25 @@ export async function logout() {
   } catch {}
   window.location.href = '/'
 }
+
+export async function getAdvertiserMe(userId) {
+  try {
+    const res = await fetch(`http://localhost:8000/auth/google/me/${userId}`, { credentials: 'include' })
+    if (!res.ok) return null
+    const body = await res.json()
+    return body.user || body
+  } catch {
+    return null
+  }
+}
+
+export function loginWithGoogleAdvertiser() {
+  window.location.href = 'http://localhost:8000/auth/google/login'
+}
+
+export async function logoutAdvertiser() {
+  try {
+    await fetch('http://localhost:8000/auth/google/logout', { credentials: 'include' })
+  } catch {}
+  window.location.href = '/'
+}

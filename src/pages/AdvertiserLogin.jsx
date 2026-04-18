@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { getMe, loginWithGoogle } from '../api/auth'
+import { getMe, loginWithGoogleAdvertiser } from '../api/auth'
 import './AdvertiserLogin.css'
 
 const LogoIcon = () => (
@@ -77,7 +77,7 @@ export default function AdvertiserLogin() {
 
         {error && <div className="al-error">{error}</div>}
 
-        <button className="al-google-btn" onClick={() => loginWithGoogle('advertiser')}>
+        <button className="al-google-btn" onClick={() => loginWithGoogleAdvertiser()}>
           <GoogleIcon />
           Continue with Google
         </button>

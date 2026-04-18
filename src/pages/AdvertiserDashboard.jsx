@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { getAllBrandsWithStats, getCampaigns, getBillingTransactions } from '../assets/overlaysStore'
 import DownloadReportModal from './DownloadReportModal'
-import { getMe } from '../api/auth'
+import { getAdvertiserMe, logoutAdvertiser } from '../api/auth'
 import './AdvertiserDashboard.css'
 
 /* ── DEV MODE ── */
@@ -10,8 +10,10 @@ const DEV_MODE = true
 
 /* ── AGENCY DATA ── */
 const AGENCY_USER = {
-  name: 'Purva Shah',
-  email: 'purva@pixelmosaic.agency',
+  name: 'Loading...',
+  email: '',
+  id: '',
+  picture: '',
   agency: 'PixelMosaic Agency',
 }
 
@@ -128,6 +130,7 @@ function TierBadge({ tier }) {
    MAIN COMPONENT
 ════════════════════════════════════════ */
 export default function AdvertiserDashboard() {
+  const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [activePage, setActivePage]         = useState(() => {
@@ -151,14 +154,18 @@ export default function AdvertiserDashboard() {
   const [user, setUser] = useState(AGENCY_USER)
 
   useEffect(() => {
-    getMe().then(data => {
+    if (!id) return;
+    getAdvertiserMe(id).then(data => {
       if (data) {
         setUser({
           ...AGENCY_USER,
-          name: data.name || AGENCY_USER.name,
-          email: data.email || AGENCY_USER.email,
+          name: data.name || 'Advertiser',
+          email: data.email || '',
           picture: data.picture || null,
+          id: data.id || null,
         })
+      } else {
+        setUser(prev => ({ ...prev, name: 'Advertiser' }))
       }
     })
   }, [])
@@ -169,7 +176,9 @@ export default function AdvertiserDashboard() {
     setSelectedBrand(null)
   }
 
-  const handleLogout = () => navigate('/')
+  const handleLogout = () => {
+    logoutAdvertiser()
+  }
 
   const [refresh, setRefresh] = useState(0)
 

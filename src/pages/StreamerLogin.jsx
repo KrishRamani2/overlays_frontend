@@ -138,7 +138,7 @@ export default function StreamerLogin() {
           <p className="sl-role-desc">
             Launch campaigns, target streamers, and track real-time performance analytics.
           </p>
-          <button className="sl-google-btn" onClick={() => window.location.href = 'http://127.0.0.1:8000/auth/google/login'}>
+          <button className="sl-google-btn" onClick={() => window.location.href = 'http://localhost:8000/auth/google/login'}>
             <GoogleIcon />
             Continue with Google
           </button>
