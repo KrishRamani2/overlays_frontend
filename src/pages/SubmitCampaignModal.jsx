@@ -64,16 +64,46 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
   const days = isCustom ? customDays : durationOpt
   const tierInfo = TIER_INFO.find(t => t.id === tier)
 
-  // Fetch brand budget on mount / brand change
+  // Fetch brand budget and account info on mount / brand change
   useEffect(() => {
     if (!brandId || !userId) return
     setLoadingBudget(true)
-    fetch(`${ADV_BASE}/api/accounts/${userId}/billing/brands/${brandId}`, {
-      credentials: 'include'
+
+    // Fetch brand info, billing summary, and user profile to handle Single Brand mode
+    Promise.all([
+      fetch(`${ADV_BASE}/api/accounts/${userId}/billing/brands/${brandId}`, { credentials: 'include' })
+        .then(res => res.ok ? res.json() : null),
+      fetch(`${ADV_BASE}/api/accounts/${userId}/billing/summary`, { credentials: 'include' })
+        .then(res => res.ok ? res.json() : null),
+      fetch(`${ADV_BASE}/auth/google/me/${userId}`, { credentials: 'include' })
+        .then(res => res.ok ? res.json() : null)
+    ]).then(([brandData, summary, meData]) => {
+      const user = meData?.user || meData
+      const isSingleBrand = user?.company_type === 'brands' || user?.company_type === 'brand'
+      
+      if (isSingleBrand && summary?.wallet) {
+        const w = summary.wallet
+        // Synchronize brand budget status with wallet for single brand mode
+        const totalRupees = parseFloat(w.budget_rupees || w.ad_budget_rupees || 0) || (parseFloat(w.balance_rupees || 0) + parseFloat(w.spent_rupees || 0))
+        const totalCents = (w.budget_cents || w.ad_budget_cents) || (w.balance_cents + w.spent_cents)
+        
+        setBudgetStatus({
+          ...brandData,
+          allocated_rupees: totalRupees.toString(),
+          allocated_cents: totalCents,
+          remaining_cents: w.balance_cents,
+          remaining_rupees: w.balance_rupees,
+          spent_cents: w.spent_cents,
+          spent_rupees: w.spent_rupees
+        })
+      } else {
+        setBudgetStatus(brandData)
+      }
+      setLoadingBudget(false)
+    }).catch(err => {
+      console.error("Failed to fetch budget status", err)
+      setLoadingBudget(false)
     })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => { setBudgetStatus(data); setLoadingBudget(false) })
-      .catch(() => setLoadingBudget(false))
   }, [brandId, userId])
 
   /* ── Local cost calculation (mirrors backend formula exactly) ── */

@@ -111,7 +111,13 @@ export default function CampaignManager() {
     // Fetch brands
     fetch(`${ADV_BASE}/api/accounts/${userId}/brands`, { credentials: 'include' })
       .then(res => res.ok ? res.json() : [])
-      .then(data => setAvailableBrands(data))
+      .then(data => {
+        setAvailableBrands(data)
+        if (data.length === 1) {
+          const onlyBrandId = data[0].id.toString();
+          setAds(prev => prev.map(ad => ad.brand ? ad : { ...ad, brand: onlyBrandId }))
+        }
+      })
       .catch(err => console.error("Failed to fetch brands", err))
 
     // Fetch campaigns

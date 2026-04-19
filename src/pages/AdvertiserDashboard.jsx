@@ -241,14 +241,7 @@ export default function AdvertiserDashboard() {
   const [chartView, setChartView] = useState('monthly') // 'weekly' | 'monthly' | 'yearly' | '2025' | '2024'
   const [showDownloadModal, setShowDownloadModal] = useState(false)
   const [brandToEdit, setBrandToEdit] = useState(null)
-  const [monthlySpendData, setMonthlySpendData] = useState(() => {
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    const d = new Date()
-    return Array.from({ length: 3 }).map((_, i) => {
-      const monthDate = new Date(d.getFullYear(), d.getMonth() - (1 - i), 1)
-      return { month: monthNames[monthDate.getMonth()], amount: 0 }
-    })
-  })
+  const [monthlySpendData, setMonthlySpendData] = useState([])
 
   const [user, setUser] = useState(AGENCY_USER)
   const [brandsList, setBrandsList] = useState([])
@@ -276,13 +269,38 @@ export default function AdvertiserDashboard() {
   const [brandCampaignsData, setBrandCampaignsData] = useState({})
   const [allCampaigns, setAllCampaigns] = useState([])
 
+  // Calculate dynamic spend for Single Brand mode
+  const { totalEstimatedSpend, calculatedMonthlyData } = (() => {
+    const activeCampaigns = allCampaigns.filter(c => c.status !== 'draft' && c.status !== 'rejected')
+    const total = activeCampaigns.reduce((sum, c) => sum + parseFloat(c.estimated_cost_rupees || 0), 0)
+    
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    const monthlyMap = {}
+    activeCampaigns.forEach(c => {
+      const date = new Date(c.created_at || Date.now())
+      const m = monthNames[date.getMonth()]
+      monthlyMap[m] = (monthlyMap[m] || 0) + parseFloat(c.estimated_cost_rupees || 0)
+    })
+
+    const d = new Date()
+    const last3 = Array.from({ length: 3 }).map((_, i) => {
+      const monthDate = new Date(d.getFullYear(), d.getMonth() - (1 - i), 1)
+      const mName = monthNames[monthDate.getMonth()]
+      return { month: mName, amount: Math.round(monthlyMap[mName] || 0) }
+    })
+
+    return { totalEstimatedSpend: total, calculatedMonthlyData: last3 }
+  })()
+
+  const finalMonthlyData = (isSingleBrand && calculatedMonthlyData.some(d => d.amount > 0)) ? calculatedMonthlyData : monthlySpendData
+
   const chartData = {
     weekly:  AGENCY_WEEKLY,
-    monthly: monthlySpendData,
+    monthly: finalMonthlyData,
     yearly:  AGENCY_YEARLY,
     '2025':  AGENCY_MONTHLY_2025,
     '2024':  AGENCY_MONTHLY_2024,
-  }[chartView] || monthlySpendData
+  }[chartView] || finalMonthlyData
 
   useEffect(() => {
     if (!id) return;
@@ -479,12 +497,12 @@ export default function AdvertiserDashboard() {
       const existingBudget = parseFloat(currentBrand?.allocated_budget_rupees || 0)
       const newTotal = existingBudget + parseFloat(amount)
 
-      const res = await fetch(`${ADV_BASE}/api/accounts/${id}/brands/${brandId}`, {
-        method: 'PUT',
+      const res = await fetch(`${ADV_BASE}/api/accounts/${id}/billing/brands/${brandId}/allocate`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          allocated_budget_rupees: newTotal.toString()
+          amount_rupees: amount.toString()
         })
       })
       if (res.ok) {
@@ -607,7 +625,17 @@ export default function AdvertiserDashboard() {
 
 
   const BRANDS = brandsList.map((b, i) => {
-    const allocated = parseFloat(b.allocated_budget_rupees || 0)
+    // For Single Brand mode, the wallet balance/budget is the brand's budget
+    const isSingleBrandMode = isSingleBrand && i === 0;
+    
+    // Total budget is either explicitly provided, or calculated as balance + spent
+    const walletTotal = parseFloat(wallet.budget_rupees || wallet.ad_budget_rupees || 0) || 
+                       (parseFloat(wallet.balance_rupees || 0) + parseFloat(wallet.spent_rupees || 0));
+
+    const allocated = isSingleBrandMode ? walletTotal : parseFloat(b.allocated_budget_rupees || 0)
+    const spent = isSingleBrandMode ? parseFloat(wallet.spent_rupees || 0) : parseFloat(b.spent_rupees || 0)
+    const remaining = isSingleBrandMode ? parseFloat(wallet.balance_rupees || 0) : parseFloat(b.remaining_budget_rupees || 0)
+
     // Count campaigns for this brand from allCampaigns
     const brandCamps = allCampaigns.filter(c => c.brand_id === b.id)
     const campaignCount = brandCamps.length
@@ -619,20 +647,21 @@ export default function AdvertiserDashboard() {
       color: ['#3B5BFF', '#7C3AED', '#EC4899', '#10B981', '#F59E0B'][i % 5],
       brand_description: b.brand_description,
       allocated_budget_rupees: allocated,
-      spent_rupees: parseFloat(b.spent_rupees || 0),
-      remaining_budget_rupees: parseFloat(b.remaining_budget_rupees || 0),
+      spent_rupees: spent,
+      remaining_budget_rupees: isSingleBrandMode ? (allocated - spent) : remaining,
       locked: allocated === 0,
-      totalSpend: `\u20b9${parseFloat(b.spent_rupees || 0).toLocaleString()}`,
-      spendRaw: parseFloat(b.spent_rupees || 0),
+      totalSpend: `\u20b9${spent.toLocaleString()}`,
+      spendRaw: spent,
       campaigns: campaignCount,
       streams: 0,
     }
   })
 
 
-  const totalSpend    = parseFloat(wallet.spent_rupees || 0)
-  const totalBudget   = parseFloat(wallet.budget_rupees || 0)
-  const totalBalance  = parseFloat(wallet.balance_rupees || 0)
+  const totalSpent    = isSingleBrand ? totalEstimatedSpend : parseFloat(wallet.spent_rupees || 0)
+  // For Single Brand, the wallet balance is treated as the total budget source to deduct from
+  const totalBudget   = isSingleBrand ? parseFloat(wallet.balance_rupees || 0) : (parseFloat(wallet.budget_rupees || wallet.ad_budget_rupees || 0) || parseFloat(wallet.budget_rupees || 0))
+  const totalBalance  = isSingleBrand ? (totalBudget - totalSpent) : parseFloat(wallet.balance_rupees || 0)
   const totalCampaigns = allCampaigns.length
 
   const activeBrand    = selectedBrand ? BRANDS.find(b => b.id === selectedBrand) : null
@@ -697,7 +726,7 @@ export default function AdvertiserDashboard() {
                 <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
                 <path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/>
               </svg>
-              <span className="ad-wallet-balance">₹{parseFloat(wallet.balance_rupees).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              <span className="ad-wallet-balance">₹{totalBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
           </button>
           <div className="ad-topnav-user">
@@ -779,8 +808,12 @@ export default function AdvertiserDashboard() {
                 {/* Brand stats with budget */}
                 <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                   {[
-                    { label: 'Total Spent', value: brand.totalSpend, sub: 'Campaign spending' },
-                    { label: 'Budget Remaining', value: `₹${parseFloat(brand.remaining_budget_rupees || 0).toLocaleString()}`, sub: `of ₹${parseFloat(brand.allocated_budget_rupees || 0).toLocaleString()} allocated` },
+                    { label: 'Total Spent', value: `₹${totalSpent.toLocaleString()}`, sub: 'Sum of all campaigns' },
+                    { 
+                      label: 'Budget Remaining', 
+                      value: `₹${totalBalance.toLocaleString()}`, 
+                      sub: isSingleBrand ? 'Available to spend' : `of ₹${totalBudget.toLocaleString()} total` 
+                    },
                     { label: 'Campaigns', value: brandCamps.length, sub: 'All campaigns', highlight: true },
                     { label: 'Pending Review', value: brandCamps.filter(c => c.status === 'pending').length, sub: 'Awaiting approval' },
                   ].map((s, i) => (
@@ -799,17 +832,17 @@ export default function AdvertiserDashboard() {
                       <div className="ad-eyebrow">Budget</div>
                       <h2 className="ad-card-title">Spend <em>overview</em></h2>
                     </div>
-                    <span className="ad-earnings-total">₹{brandRemaining.toLocaleString()} remaining</span>
+                    <span className="ad-earnings-total">₹{totalBalance.toLocaleString()} remaining</span>
                   </div>
                   <div className="ad-brand-bar-track" style={{ height: '8px', borderRadius: '4px' }}>
                     <div className="ad-brand-bar-fill" style={{
-                      width: `${brandBudget > 0 ? Math.min((brand.spendRaw / brandBudget) * 100, 100).toFixed(0) : 0}%`,
+                      width: `${totalBudget > 0 ? Math.min((totalSpent / totalBudget) * 100, 100).toFixed(0) : 0}%`,
                       background: '#3B5BFF', borderRadius: '4px', height: '8px'
                     }} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '.5rem', fontSize: '.78rem', color: '#64748b' }}>
-                    <span>₹{brand.spendRaw.toLocaleString()} spent</span>
-                    <span>₹{brand.allocated_budget_rupees.toLocaleString()} total budget</span>
+                    <span>₹{totalSpent.toLocaleString()} spent</span>
+                    <span>₹{totalBudget.toLocaleString()} total budget</span>
                   </div>
                 </div>
 
@@ -899,7 +932,7 @@ export default function AdvertiserDashboard() {
                 {[
                   { label: 'Total Left', value: `₹${totalBalance.toLocaleString()}`, sub: 'Unallocated in wallet', highlight: true },
                   { label: 'Total Allocated', value: `₹${totalBudget.toLocaleString()}`, sub: 'Across all brands' },
-                  { label: 'Total Spent', value: `₹${totalSpend.toLocaleString()}`, sub: 'By all campaigns' },
+                  { label: 'Total Spent', value: `₹${totalSpent.toLocaleString()}`, sub: 'By all campaigns' },
                   { label: 'Total Campaigns', value: totalCampaigns, sub: 'Active & completed' },
                 ].map((s, i) => (
                   <div key={i} className={`ad-stat-card ${s.highlight ? 'highlight' : ''}`}>
@@ -1184,9 +1217,9 @@ export default function AdvertiserDashboard() {
               {/* Summary stats */}
               <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                 {[
-                  { label: 'Total agency spend',  value: `₹${(totalSpend / 1000).toFixed(0)}K`, sub: 'All time, all brands' },
+                  { label: isSingleBrand ? 'Total brand spend' : 'Total agency spend',  value: `₹${(totalSpent / 1000).toFixed(0)}K`, sub: isSingleBrand ? 'All time spending' : 'All time, all brands' },
                   { label: 'This month',           value: `₹${chartData[chartData.length - 1]?.amount?.toLocaleString() || '0'}`,  sub: `${chartData[chartData.length - 1]?.month || ''} 2026` },
-                  { label: 'Active campaigns',     value: totalCampaigns, sub: 'Across all brands', highlight: true },
+                  { label: 'Active campaigns',     value: totalCampaigns, sub: isSingleBrand ? 'Campaigns' : 'Across all brands', highlight: true },
                   { label: 'Filtered total',       value: `₹${(filteredTotal / 1000).toFixed(1)}K`, sub: 'Current filter view' },
                 ].map((s, i) => (
                   <div key={i} className={`ad-stat-card ${s.highlight ? 'highlight' : ''}`}>
@@ -1252,7 +1285,7 @@ export default function AdvertiserDashboard() {
                           <span className="ad-breakdown-name">{brand.name}</span>
                           <div className="ad-breakdown-bar-track">
                             <div className="ad-breakdown-bar" style={{
-                              width: `${(brand.spendRaw / totalSpend) * 100}%`,
+                              width: `${totalSpent > 0 ? (brand.spendRaw / totalSpent) * 100 : 0}%`,
                               background: brand.color,
                             }}/>
                           </div>
@@ -1547,7 +1580,7 @@ export default function AdvertiserDashboard() {
         <WalletModal 
           isOpen={showWalletModal} 
           onClose={() => setShowWalletModal(false)} 
-          currentBalance={wallet.balance_rupees}
+          currentBalance={totalBalance}
           onTopup={handleTopup}
           isLoading={isTopupLoading}
         />
