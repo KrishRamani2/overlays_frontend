@@ -98,7 +98,8 @@ const NAV_ITEMS = [
 ]
 
 function EarningsChart({ data }) {
-  const max = Math.max(...data.map(d => d.amount))
+  if (!data || data.length === 0) return <div className="ad-chart-empty">No data available</div>
+  const max = Math.max(...data.map(d => d.amount), 1)
   return (
     <div className="ad-chart">
       {data.map((d, i) => (
@@ -240,14 +241,16 @@ export default function AdvertiserDashboard() {
   const [brandStatusFilter, setBrandStatusFilter] = useState('all')
   const [chartView, setChartView] = useState('monthly') // 'weekly' | 'monthly' | 'yearly' | '2025' | '2024'
   const [showDownloadModal, setShowDownloadModal] = useState(false)
-  const chartData = {
-    weekly:  AGENCY_WEEKLY,
-    monthly: AGENCY_MONTHLY,
-    yearly:  AGENCY_YEARLY,
-    '2025':  AGENCY_MONTHLY_2025,
-    '2024':  AGENCY_MONTHLY_2024,
-  }[chartView] || AGENCY_MONTHLY
-  
+  const [brandToEdit, setBrandToEdit] = useState(null)
+  const [monthlySpendData, setMonthlySpendData] = useState(() => {
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    const d = new Date()
+    return Array.from({ length: 3 }).map((_, i) => {
+      const monthDate = new Date(d.getFullYear(), d.getMonth() - (1 - i), 1)
+      return { month: monthNames[monthDate.getMonth()], amount: 0 }
+    })
+  })
+
   const [user, setUser] = useState(AGENCY_USER)
   const [brandsList, setBrandsList] = useState([])
   const [loadingBrands, setLoadingBrands] = useState(true)
@@ -267,6 +270,14 @@ export default function AdvertiserDashboard() {
   const [brandToAllocate, setBrandToAllocate] = useState(null)
   const [isBrandLoading, setIsBrandLoading] = useState(false)
   const [refresh, setRefresh] = useState(0)
+
+  const chartData = {
+    weekly:  AGENCY_WEEKLY,
+    monthly: monthlySpendData,
+    yearly:  AGENCY_YEARLY,
+    '2025':  AGENCY_MONTHLY_2025,
+    '2024':  AGENCY_MONTHLY_2024,
+  }[chartView] || monthlySpendData
 
   useEffect(() => {
     if (!id) return;
@@ -308,7 +319,21 @@ export default function AdvertiserDashboard() {
         }
       } catch (err) { console.error('Failed to fetch billing summary', err) }
     }
+    
+    const fetchMonthlySpend = async () => {
+      try {
+        const res = await fetch(`${ADV_BASE}/api/accounts/${id}/billing/monthly-spend?t=${Date.now()}`, { credentials: 'include' })
+        if (res.ok) {
+          const data = await res.json()
+          if (data && data.length > 0) {
+            setMonthlySpendData(data)
+          }
+        }
+      } catch (err) { console.error('Failed to fetch monthly spend', err) }
+    }
+
     fetchBillingData()
+    fetchMonthlySpend()
   }, [id, refresh])
 
   const saveSettings = async (newData) => {
@@ -461,6 +486,64 @@ export default function AdvertiserDashboard() {
     }
   }
 
+  const handleUpdateBrand = async (brandId, brandData) => {
+    setIsBrandLoading(true)
+    try {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${id}/brands/${brandId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          brand_name: brandData.name,
+          brand_description: brandData.description,
+          brand_logo: brandData.logo,
+          target_audience: brandData.category
+        })
+      })
+      if (res.ok) {
+        const updatedBrand = await res.json()
+        setBrandsList(prev => prev.map(b => b.id === brandId ? updatedBrand : b))
+        setShowAddBrandModal(false)
+        setBrandToEdit(null)
+        setRefresh(r => r + 1)
+        alert('Brand updated successfully!')
+      } else {
+        const err = await res.json()
+        alert(err.detail || 'Failed to update brand')
+      }
+    } catch (err) {
+      console.error(err)
+      alert('Failed to update brand')
+    } finally {
+      setIsBrandLoading(false)
+    }
+  }
+
+  const handleDeleteBrand = async (brandId) => {
+    if (!window.confirm('Are you sure you want to delete this brand? All associated campaigns will also be affected.')) return
+    setIsBrandLoading(true)
+    try {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${id}/brands/${brandId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+      if (res.ok) {
+        setBrandsList(prev => prev.filter(b => b.id !== brandId))
+        setSelectedBrand(null)
+        setRefresh(r => r + 1)
+        alert('Brand deleted successfully!')
+      } else {
+        const err = await res.json()
+        alert(err.detail || 'Failed to delete brand')
+      }
+    } catch (err) {
+      console.error(err)
+      alert('Failed to delete brand')
+    } finally {
+      setIsBrandLoading(false)
+    }
+  }
+
   const handleTopup = async (amount) => {
     setIsTopupLoading(true)
     const idempotencyKey = `topup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -508,26 +591,26 @@ export default function AdvertiserDashboard() {
     color: '#3B5BFF'
   }
 
-  const BRANDS = brandsList.length > 0 
-    ? brandsList.map((b, i) => {
-        const allocated = parseFloat(b.allocated_budget_rupees || 0)
-        return {
-          ...MOCK_STATS_TEMPLATE,
-          id: b.id,
-          name: b.brand_name,
-          category: b.target_audience || 'Brand',
-          logo: b.brand_logo || (b.brand_name ? b.brand_name[0] : 'B'),
-          color: ['#3B5BFF', '#7C3AED', '#EC4899', '#10B981', '#F59E0B'][i % 5],
-          brand_description: b.brand_description,
-          allocated_budget_rupees: allocated,
-          spent_rupees: parseFloat(b.spent_rupees || 0),
-          remaining_budget_rupees: parseFloat(b.remaining_budget_rupees || 0),
-          locked: allocated === 0,
-          totalSpend: `₹${parseFloat(b.spent_rupees || 0).toLocaleString()}`,
-          spendRaw: parseFloat(b.spent_rupees || 0)
-        }
-      })
-    : (loadingBrands ? [] : getAllBrandsWithStats())
+
+  const BRANDS = brandsList.map((b, i) => {
+    const allocated = parseFloat(b.allocated_budget_rupees || 0)
+    return {
+      ...MOCK_STATS_TEMPLATE,
+      id: b.id,
+      name: b.brand_name,
+      category: b.target_audience || 'Brand',
+      logo: b.brand_logo || (b.brand_name ? b.brand_name[0] : 'B'),
+      color: ['#3B5BFF', '#7C3AED', '#EC4899', '#10B981', '#F59E0B'][i % 5],
+      brand_description: b.brand_description,
+      allocated_budget_rupees: allocated,
+      spent_rupees: parseFloat(b.spent_rupees || 0),
+      remaining_budget_rupees: parseFloat(b.remaining_budget_rupees || 0),
+      locked: allocated === 0,
+      totalSpend: `₹${parseFloat(b.spent_rupees || 0).toLocaleString()}`,
+      spendRaw: parseFloat(b.spent_rupees || 0)
+    }
+  })
+
 
   const totalSpend    = parseFloat(wallet.spent_rupees || 0)
   const totalBudget   = parseFloat(wallet.budget_rupees || 0)
@@ -647,7 +730,19 @@ export default function AdvertiserDashboard() {
           {/* ── OVERVIEW — Single Brand Dashboard ── */}
           {activePage === 'overview' && isSingleBrand && (() => {
             const brand = BRANDS[0]
-            if (!brand) return null
+            if (!brand) return (
+              <div className="ad-content">
+                <div className="ad-no-brands-empty">
+                  <div className="ad-empty-icon">🏢</div>
+                  <h3>No brand setup</h3>
+                  <p>Your account is set to Single Brand mode, but no brand has been created yet.</p>
+                  <button className="ad-btn-primary" onClick={() => setShowAddBrandModal(true)}>
+                    + Create Brand
+                  </button>
+                </div>
+              </div>
+            )
+
             const brandBudget = brand.allocated_budget_rupees || 0
             const brandRemaining = brand.remaining_budget_rupees || 0
             const brandCamps = getCampaigns(brand.id)
@@ -707,9 +802,9 @@ export default function AdvertiserDashboard() {
                       <div className="ad-eyebrow">Monthly Spend</div>
                       <h2 className="ad-card-title">Spend <em>trend</em></h2>
                     </div>
-                    <span className="ad-earnings-total">₹{AGENCY_MONTHLY[AGENCY_MONTHLY.length - 1].amount.toLocaleString()} this month</span>
+                    <span className="ad-earnings-total">₹{chartData[chartData.length - 1]?.amount?.toLocaleString() || '0'} this month</span>
                   </div>
-                  <EarningsChart data={AGENCY_MONTHLY} />
+                  <EarningsChart data={chartData} />
                 </div>
 
                 {/* Campaign table */}
@@ -812,9 +907,9 @@ export default function AdvertiserDashboard() {
                     <div className="ad-eyebrow">Monthly Spend</div>
                     <h2 className="ad-card-title">Agency <em>spend trend</em></h2>
                   </div>
-                  <span className="ad-earnings-total">₹{AGENCY_MONTHLY[AGENCY_MONTHLY.length - 1].amount.toLocaleString()} this month</span>
+                  <span className="ad-earnings-total">₹{chartData[chartData.length - 1]?.amount?.toLocaleString() || '0'} this month</span>
                 </div>
-                <EarningsChart data={AGENCY_MONTHLY} />
+                <EarningsChart data={chartData} />
               </div>
 
               {/* Brand cards */}
@@ -823,7 +918,7 @@ export default function AdvertiserDashboard() {
                 <button className="ad-btn-primary ad-btn-sm" onClick={() => setShowAddBrandModal(true)}>+ Add brand</button>
               </div>
               <div className="ad-brands-grid">
-                {BRANDS.map(brand => (
+                {BRANDS.length > 0 ? BRANDS.map(brand => (
                   <button
                     key={brand.id}
                     className={`ad-brand-card ${brand.locked ? 'locked' : ''}`}
@@ -898,7 +993,13 @@ export default function AdvertiserDashboard() {
                       {brand.remaining_budget_rupees > 0 && ` \u00b7 \u20b9${brand.remaining_budget_rupees.toLocaleString()} remaining`}
                     </div>
                   </button>
-                ))}
+                )) : !loadingBrands && (
+                  <div className="ad-no-brands-empty">
+                    <div className="ad-empty-icon">🏢</div>
+                    <h3>No brands yet</h3>
+                    <p>Add your first brand to start running campaigns and tracking performance.</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -925,6 +1026,12 @@ export default function AdvertiserDashboard() {
                   </div>
                 </div>
                 <div className="ad-page-actions">
+                  <button className="ad-btn-ghost" style={{ marginRight: '0.75rem' }} onClick={() => { setBrandToEdit(activeBrand); setShowAddBrandModal(true); }}>
+                    Edit Brand
+                  </button>
+                  <button className="ad-btn-danger-outline ad-btn-sm" style={{ marginRight: '0.75rem' }} onClick={() => handleDeleteBrand(activeBrand.id)}>
+                    Delete
+                  </button>
                   <button className="ad-btn-primary" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
                     + New Campaign
                   </button>
@@ -1079,7 +1186,7 @@ export default function AdvertiserDashboard() {
               <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                 {[
                   { label: 'Total agency spend',  value: `₹${(totalSpend / 1000).toFixed(0)}K`, sub: 'All time, all brands' },
-                  { label: 'This month',           value: '₹63,400',  sub: 'June 2026'         },
+                  { label: 'This month',           value: `₹${chartData[chartData.length - 1]?.amount?.toLocaleString() || '0'}`,  sub: `${chartData[chartData.length - 1]?.month || ''} 2026` },
                   { label: 'Active campaigns',     value: totalCampaigns, sub: 'Across all brands', highlight: true },
                   { label: 'Filtered total',       value: `₹${(filteredTotal / 1000).toFixed(1)}K`, sub: 'Current filter view' },
                 ].map((s, i) => (
@@ -1167,7 +1274,7 @@ export default function AdvertiserDashboard() {
                   <div className="ad-chart-filters">
                     {[
                       { id: 'weekly',  label: 'This week' },
-                      { id: 'monthly', label: '2026'      },
+                      { id: 'monthly', label: 'Real Spend' },
                       { id: '2025',    label: '2025'      },
                       { id: '2024',    label: '2024'      },
                       { id: 'yearly',  label: 'All years' },
@@ -1350,7 +1457,21 @@ export default function AdvertiserDashboard() {
                              {brand.brand_description}
                            </span>
                         </div>
-                        <button className="ad-btn-ghost ad-btn-sm">Edit</button>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button 
+                            className="ad-btn-ghost ad-btn-sm"
+                            onClick={() => { setBrandToEdit(brand); setShowAddBrandModal(true); }}
+                          >
+                            Edit
+                          </button>
+                          <button 
+                            className="ad-btn-ghost ad-btn-sm"
+                            style={{ color: '#EF4444' }}
+                            onClick={() => handleDeleteBrand(brand.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1432,11 +1553,13 @@ export default function AdvertiserDashboard() {
         />
       )}
 
-      {/* ══ ADD BRAND MODAL ══ */}
+      {/* ══ BRAND MODAL ══ */}
       {showAddBrandModal && (
-        <AddBrandModal 
-          onClose={() => setShowAddBrandModal(false)}
+        <BrandModal 
+          onClose={() => { setShowAddBrandModal(false); setBrandToEdit(null); }}
           onAdd={handleAddBrand}
+          onUpdate={handleUpdateBrand}
+          brand={brandToEdit}
           isLoading={isBrandLoading}
         />
       )}
@@ -1453,12 +1576,22 @@ export default function AdvertiserDashboard() {
     </div>
   )
 }
-function AddBrandModal({ onClose, onAdd, isLoading }) {
-  const [formData, setFormData] = useState({ name: '', description: '', logo: '', budget: '' })
+function BrandModal({ onClose, onAdd, onUpdate, brand, isLoading }) {
+  const [formData, setFormData] = useState({ 
+    name: brand?.name || '', 
+    description: brand?.brand_description || '', 
+    logo: brand?.logo || '', 
+    category: brand?.category || '',
+    budget: '' 
+  })
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    onAdd(formData)
+    if (brand) {
+      onUpdate(brand.id, formData)
+    } else {
+      onAdd(formData)
+    }
   }
 
   return (
@@ -1466,8 +1599,8 @@ function AddBrandModal({ onClose, onAdd, isLoading }) {
       <div className="ad-modal-card">
         <div className="ad-modal-header">
           <div className="ad-modal-title-wrap">
-            <div className="ad-eyebrow">New Brand</div>
-            <h2 className="ad-modal-title">Add <em>brand</em></h2>
+            <div className="ad-eyebrow">{brand ? 'Edit Brand' : 'New Brand'}</div>
+            <h2 className="ad-modal-title">{brand ? 'Update' : 'Add'} <em>brand</em></h2>
           </div>
           <button className="ad-modal-close" onClick={onClose}>×</button>
         </div>
@@ -1481,6 +1614,15 @@ function AddBrandModal({ onClose, onAdd, isLoading }) {
                 onChange={e => setFormData({...formData, name: e.target.value})} 
                 placeholder="e.g. Nike"
                 required
+              />
+            </div>
+            <div className="ad-settings-field">
+              <label className="ad-settings-label">Category / Industry</label>
+              <input 
+                className="ad-settings-input" 
+                value={formData.category} 
+                onChange={e => setFormData({...formData, category: e.target.value})} 
+                placeholder="e.g. Sports, Gaming, Tech"
               />
             </div>
             <div className="ad-settings-field">
@@ -1502,23 +1644,25 @@ function AddBrandModal({ onClose, onAdd, isLoading }) {
                 placeholder="https://..."
               />
             </div>
-            <div className="ad-settings-field">
-              <label className="ad-settings-label">Initial Budget Allocation (₹)</label>
-              <input 
-                type="number"
-                className="ad-settings-input" 
-                value={formData.budget} 
-                onChange={e => setFormData({...formData, budget: e.target.value})} 
-                placeholder="0.00"
-                min="0"
-              />
-              <span className="ad-muted" style={{ fontSize: '0.7rem', marginTop: '0.25rem' }}>
-                You can start campaigns once budget is allocated.
-              </span>
-            </div>
+            {!brand && (
+              <div className="ad-settings-field">
+                <label className="ad-settings-label">Initial Budget Allocation (₹)</label>
+                <input 
+                  type="number"
+                  className="ad-settings-input" 
+                  value={formData.budget} 
+                  onChange={e => setFormData({...formData, budget: e.target.value})} 
+                  placeholder="0.00"
+                  min="0"
+                />
+                <span className="ad-muted" style={{ fontSize: '0.7rem', marginTop: '0.25rem' }}>
+                  You can start campaigns once budget is allocated.
+                </span>
+              </div>
+            )}
             <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
               <button type="submit" className="ad-btn-primary" disabled={isLoading}>
-                {isLoading ? 'Creating...' : 'Create Brand'}
+                {isLoading ? (brand ? 'Updating...' : 'Creating...') : (brand ? 'Update Brand' : 'Create Brand')}
               </button>
               <button type="button" className="ad-btn-ghost" onClick={onClose}>Cancel</button>
             </div>

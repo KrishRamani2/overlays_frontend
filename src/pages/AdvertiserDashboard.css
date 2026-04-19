@@ -73,12 +73,12 @@
 /* Wallet button */
 .ad-wallet-btn {
   display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: 50%;
-  border: 1px solid var(--border); background: white;
+  width: 36px; height: 36px; 
+  border: 0px solid var(--border); background: white;
   cursor: pointer; color: var(--ink2);
   transition: all 0.15s; flex-shrink: 0;
 }
-.ad-wallet-btn:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
+.ad-wallet-btn:hover {}
 
 /* ══ BODY ══ */
 .ad-body {
@@ -906,4 +906,37 @@
   align-items: center;
   gap: 0.4rem;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* ── Empty brand state ── */
+.ad-no-brands-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  background: white;
+  border: 1.5px dashed var(--border);
+  border-radius: 24px;
+  text-align: center;
+}
+.ad-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1.25rem;
+  opacity: 0.8;
+}
+.ad-no-brands-empty h3 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--ink);
+}
+.ad-no-brands-empty p {
+  font-size: 0.92rem;
+  color: var(--muted);
+  max-width: 400px;
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
 }
