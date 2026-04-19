@@ -1470,43 +1470,57 @@ export default function AdvertiserDashboard() {
                   <div className="ad-card-header">
                     <div>
                       <div className="ad-eyebrow">Brands</div>
-                      <h2 className="ad-card-title">Manage <em>brands</em></h2>
+                      <h2 className="ad-card-title">{isSingleBrand ? 'Brand profile' : 'Manage brands'}</h2>
                     </div>
-                    <button className="ad-btn-primary ad-btn-sm" onClick={() => setShowAddBrandModal(true)}>+ Add brand</button>
+                    {!isSingleBrand && <button className="ad-btn-primary ad-btn-sm" onClick={() => setShowAddBrandModal(true)}>+ Add brand</button>}
                   </div>
-                  <div className="ad-brand-settings-list">
-                    {loadingBrands && <div style={{padding:'1rem', color:'var(--muted)'}}>Loading brands...</div>}
-                    {!loadingBrands && BRANDS.length === 0 && <div style={{padding:'1rem', color:'var(--muted)'}}>No brands found.</div>}
-                    {BRANDS.map(brand => (
-                      <div key={brand.id} className="ad-brand-settings-row">
-                        <div className="ad-brand-logo-sm" style={{ background: brand.color, color: 'white' }}>{brand.logo}</div>
-                        <div className="ad-breakdown-info">
-                          <span className="ad-breakdown-name">{brand.name}</span>
-                          <span className="ad-breakdown-sub">{brand.category}</span>
+
+                  {isSingleBrand && BRANDS[0] ? (
+                    <div className="ad-modal-body" style={{ padding: 0 }}>
+                      <BrandForm 
+                        brand={BRANDS[0]} 
+                        onUpdate={handleUpdateBrand} 
+                        isLoading={isBrandLoading} 
+                        isInline={true}
+                      />
+                    </div>
+                  ) : (
+                    <div className="ad-brand-settings-list">
+                      {loadingBrands && <div style={{padding:'1rem', color:'var(--muted)'}}>Loading brands...</div>}
+                      {!loadingBrands && BRANDS.length === 0 && <div style={{padding:'1rem', color:'var(--muted)'}}>No brands found.</div>}
+                      {BRANDS.map(brand => (
+                        <div key={brand.id} className="ad-brand-settings-row">
+                          <div className="ad-brand-logo-sm" style={{ background: brand.color, color: 'white' }}>{brand.logo}</div>
+                          <div className="ad-breakdown-info">
+                            <span className="ad-breakdown-name">{brand.name}</span>
+                            <span className="ad-breakdown-sub">{brand.category}</span>
+                          </div>
+                          <div className="ad-breakdown-info" style={{maxWidth:'300px'}}>
+                             <span className="ad-breakdown-sub" style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
+                               {brand.brand_description}
+                             </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button 
+                              className="ad-btn-ghost ad-btn-sm"
+                              onClick={() => { setBrandToEdit(brand); setShowAddBrandModal(true); }}
+                            >
+                              Edit
+                            </button>
+                            {!isSingleBrand && (
+                              <button 
+                                className="ad-btn-ghost ad-btn-sm"
+                                style={{ color: '#EF4444' }}
+                                onClick={() => handleDeleteBrand(brand.id)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="ad-breakdown-info" style={{maxWidth:'300px'}}>
-                           <span className="ad-breakdown-sub" style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
-                             {brand.brand_description}
-                           </span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button 
-                            className="ad-btn-ghost ad-btn-sm"
-                            onClick={() => { setBrandToEdit(brand); setShowAddBrandModal(true); }}
-                          >
-                            Edit
-                          </button>
-                          <button 
-                            className="ad-btn-ghost ad-btn-sm"
-                            style={{ color: '#EF4444' }}
-                            onClick={() => handleDeleteBrand(brand.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Preferences */}
@@ -1610,23 +1624,6 @@ export default function AdvertiserDashboard() {
   )
 }
 function BrandModal({ onClose, onAdd, onUpdate, brand, isLoading }) {
-  const [formData, setFormData] = useState({ 
-    name: brand?.name || '', 
-    description: brand?.brand_description || '', 
-    logo: brand?.logo || '', 
-    category: brand?.category || '',
-    budget: '' 
-  })
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (brand) {
-      onUpdate(brand.id, formData)
-    } else {
-      onAdd(formData)
-    }
-  }
-
   return (
     <div className="ad-modal-overlay">
       <div className="ad-modal-card">
@@ -1638,71 +1635,113 @@ function BrandModal({ onClose, onAdd, onUpdate, brand, isLoading }) {
           <button className="ad-modal-close" onClick={onClose}>×</button>
         </div>
         <div className="ad-modal-body">
-          <form onSubmit={handleSubmit} className="ad-settings-fields">
-            <div className="ad-settings-field">
-              <label className="ad-settings-label">Brand Name</label>
-              <input 
-                className="ad-settings-input" 
-                value={formData.name} 
-                onChange={e => setFormData({...formData, name: e.target.value})} 
-                placeholder="e.g. Nike"
-                required
-              />
-            </div>
-            <div className="ad-settings-field">
-              <label className="ad-settings-label">Category / Industry</label>
-              <input 
-                className="ad-settings-input" 
-                value={formData.category} 
-                onChange={e => setFormData({...formData, category: e.target.value})} 
-                placeholder="e.g. Sports, Gaming, Tech"
-              />
-            </div>
-            <div className="ad-settings-field">
-              <label className="ad-settings-label">Description</label>
-              <textarea 
-                className="ad-settings-input" 
-                style={{ height: '80px', resize: 'none' }}
-                value={formData.description} 
-                onChange={e => setFormData({...formData, description: e.target.value})} 
-                placeholder="What does this brand do?"
-              />
-            </div>
-            <div className="ad-settings-field">
-              <label className="ad-settings-label">Logo URL (Optional)</label>
-              <input 
-                className="ad-settings-input" 
-                value={formData.logo} 
-                onChange={e => setFormData({...formData, logo: e.target.value})} 
-                placeholder="https://..."
-              />
-            </div>
-            {!brand && (
-              <div className="ad-settings-field">
-                <label className="ad-settings-label">Initial Budget Allocation (₹)</label>
-                <input 
-                  type="number"
-                  className="ad-settings-input" 
-                  value={formData.budget} 
-                  onChange={e => setFormData({...formData, budget: e.target.value})} 
-                  placeholder="0.00"
-                  min="0"
-                />
-                <span className="ad-muted" style={{ fontSize: '0.7rem', marginTop: '0.25rem' }}>
-                  You can start campaigns once budget is allocated.
-                </span>
-              </div>
-            )}
-            <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
-              <button type="submit" className="ad-btn-primary" disabled={isLoading}>
-                {isLoading ? (brand ? 'Updating...' : 'Creating...') : (brand ? 'Update Brand' : 'Create Brand')}
-              </button>
-              <button type="button" className="ad-btn-ghost" onClick={onClose}>Cancel</button>
-            </div>
-          </form>
+          <BrandForm 
+            brand={brand} 
+            onAdd={onAdd} 
+            onUpdate={onUpdate} 
+            onClose={onClose} 
+            isLoading={isLoading} 
+          />
         </div>
       </div>
     </div>
+  )
+}
+
+function BrandForm({ brand, onAdd, onUpdate, onClose, isLoading, isInline = false }) {
+  const [formData, setFormData] = useState({ 
+    name: brand?.name || '', 
+    description: brand?.brand_description || '', 
+    logo: brand?.logo || '', 
+    category: brand?.category || '',
+    budget: '' 
+  })
+
+  // Keep form in sync with brand prop if it changes (important for inline)
+  useEffect(() => {
+    if (brand && isInline) {
+      setFormData({
+        name: brand.name || '',
+        description: brand.brand_description || '',
+        logo: brand.logo || '',
+        category: brand.category || '',
+        budget: ''
+      })
+    }
+  }, [brand, isInline])
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (brand) {
+      onUpdate(brand.id, formData)
+    } else {
+      onAdd(formData)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="ad-settings-fields">
+      <div className="ad-settings-field">
+        <label className="ad-settings-label">Brand Name</label>
+        <input 
+          className="ad-settings-input" 
+          value={formData.name} 
+          onChange={e => setFormData({...formData, name: e.target.value})} 
+          placeholder="e.g. Nike"
+          required
+        />
+      </div>
+      <div className="ad-settings-field">
+        <label className="ad-settings-label">Category / Industry</label>
+        <input 
+          className="ad-settings-input" 
+          value={formData.category} 
+          onChange={e => setFormData({...formData, category: e.target.value})} 
+          placeholder="e.g. Sports, Gaming, Tech"
+        />
+      </div>
+      <div className="ad-settings-field">
+        <label className="ad-settings-label">Description</label>
+        <textarea 
+          className="ad-settings-input" 
+          style={{ height: '80px', resize: 'none' }}
+          value={formData.description} 
+          onChange={e => setFormData({...formData, description: e.target.value})} 
+          placeholder="What does this brand do?"
+        />
+      </div>
+      <div className="ad-settings-field">
+        <label className="ad-settings-label">Logo URL (Optional)</label>
+        <input 
+          className="ad-settings-input" 
+          value={formData.logo} 
+          onChange={e => setFormData({...formData, logo: e.target.value})} 
+          placeholder="https://..."
+        />
+      </div>
+      {!brand && (
+        <div className="ad-settings-field">
+          <label className="ad-settings-label">Initial Budget Allocation (₹)</label>
+          <input 
+            type="number"
+            className="ad-settings-input" 
+            value={formData.budget} 
+            onChange={e => setFormData({...formData, budget: e.target.value})} 
+            placeholder="0.00"
+            min="0"
+          />
+          <span className="ad-muted" style={{ fontSize: '0.7rem', marginTop: '0.25rem' }}>
+            You can start campaigns once budget is allocated.
+          </span>
+        </div>
+      )}
+      <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
+        <button type="submit" className="ad-btn-primary" disabled={isLoading}>
+          {isLoading ? (brand ? 'Updating...' : 'Creating...') : (brand ? 'Update Brand' : 'Create Brand')}
+        </button>
+        {!isInline && <button type="button" className="ad-btn-ghost" onClick={onClose}>Cancel</button>}
+      </div>
+    </form>
   )
 }
 
