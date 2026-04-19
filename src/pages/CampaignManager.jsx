@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import SubmitCampaignModal from './SubmitCampaignModal'
+import toast from 'react-hot-toast'
 import './SubmitCampaignModal.css'
 import { logout, getMe } from '../api/auth'
 import './CampaignManager.css'
@@ -129,8 +130,13 @@ export default function CampaignManager() {
   const [availableBrands, setAvailableBrands] = useState([])
 
   /* ── Ad variations ── */
-  const [ads,          setAds]         = useState([defaultAd(0)])
-  const [currentAdIdx, setCurrentAdIdx]= useState(0)
+  const [ads,              setAds]             = useState([defaultAd(0)])
+  const [currentAdIdx,     setCurrentAdIdx]    = useState(0)
+
+  // Derived state
+  const currentCampaign = campaigns.find(c => (c.campaign_id || c.id) === activeCampaignId) || 
+                          campaigns.find(c => (c.campaign_id || c.id) === campaignId);
+  const currentCampaignStatus = currentCampaign ? (currentCampaign.status || 'draft') : 'draft';
 
   /* ── Canvas background ── */
   const [canvasBgColor, setCanvasBgColor]  = useState('#0d0d1a')
@@ -246,7 +252,7 @@ export default function CampaignManager() {
   });
 
   const saveCampaign = () => {
-    if (!campaignId.trim()) { alert('Campaign ID is required'); return }
+    if (!campaignId.trim()) { toast.error('Campaign ID is required'); return }
     // Save locally only — does NOT persist to backend
     const localData = { id: campaignId, campaign_id: campaignId, campaign_name: currentAd.visibleName || campaignId, duration, ads, status: 'draft', savedAt: new Date().toISOString() }
     setCampaigns(prev => {
@@ -255,12 +261,12 @@ export default function CampaignManager() {
       return [...prev, localData]
     })
     setActiveCampaignId(campaignId); setIsEditing(true)
-    alert(`✓ Ad saved locally. Use "Submit for review" to finalize and save to server.`)
+    toast.success(`Ad saved locally. Use "Submit for review" to finalize and save to server.`)
   }
 
   const handleSubmitClick = () => {
-    if (!campaignId.trim()) { alert('Campaign ID is required'); return }
-    if (!currentAd.brand) { alert('Please select a brand for the ad first'); return }
+    if (!campaignId.trim()) { toast.error('Campaign ID is required'); return }
+    if (!currentAd.brand) { toast.error('Please select a brand for the ad first'); return }
     setShowSubmitModal(true)
   }
 
@@ -278,7 +284,7 @@ export default function CampaignManager() {
 
       if (!saveRes.ok) {
         const errData = await saveRes.json();
-        alert(`Failed to save campaign: ${errData.detail || 'Server error'}`);
+        toast.error(`Failed to save campaign: ${errData.detail || 'Server error'}`);
         return;
       }
 
@@ -299,7 +305,7 @@ export default function CampaignManager() {
 
       if (submitRes.ok) {
         setShowSubmitModal(false);
-        alert(`✓ Campaign "${campaignId}" submitted for review! ₹${estimatedCost?.toLocaleString('en-IN') || '0'} deducted from brand budget.`);
+        toast.success(`Campaign "${campaignId}" submitted for review! ₹${estimatedCost?.toLocaleString('en-IN') || '0'} deducted from brand budget.`);
         initNew();
         // Refresh campaign list
         fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns`, { credentials: 'include' })
@@ -308,22 +314,40 @@ export default function CampaignManager() {
           .catch(err => console.error("Failed to refresh campaigns", err))
       } else {
         const errData = await submitRes.json();
-        alert(`Failed to submit campaign: ${errData.detail || 'Server error'}`);
+        toast.error(`Failed to submit campaign: ${errData.detail || 'Server error'}`);
       }
     } catch (err) {
       console.error("Submission error:", err);
-      alert("Failed to connect to the server.");
+      toast.error("Failed to connect to the server.");
     }
   };
 
 
   const loadCampaign = (c) => {
-    setCampaignId(c.id); setDuration(c.duration); setAds(c.ads)
-    setCurrentAdIdx(0); setIsEditing(true); setActiveCampaignId(c.id); setSelected(null)
+    setCampaignId(c.campaign_id || c.id); setDuration(c.duration); setAds(c.ads || [defaultAd(0)])
+    setCurrentAdIdx(0); setIsEditing(true); setActiveCampaignId(c.campaign_id || c.id); setSelected(null)
   }
-  const deleteCampaign = () => {
+  const deleteCampaign = async () => {
     if (!window.confirm('Delete this campaign?')) return
-    setCampaigns(prev=>prev.filter(c=>c.id!==campaignId)); initNew()
+
+    // Try deleting from backend if it might exist there
+    try {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns/${campaignId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+      if (!res.ok && res.status !== 404) {
+        const err = await res.json()
+        toast.error(`Failed to delete from server: ${err.detail || 'Server error'}`)
+        return
+      }
+    } catch (err) {
+      console.error("Delete backend error:", err)
+    }
+
+    setCampaigns(prev=>prev.filter(c=>(c.campaign_id || c.id)!==campaignId)); 
+    initNew()
+    toast.success('Campaign deleted successfully')
   }
 
   /* ── Animation loop ── */
@@ -397,17 +421,20 @@ export default function CampaignManager() {
     
     // Check if it's image or gif
     if (!file.type.startsWith('image/')) {
-      alert("Only images and GIFs are allowed!");
+      toast.error("Only images and GIFs are allowed!");
       return;
     }
 
+    const toastId = toast.loading("Uploading image...");
     const url = await uploadToCloudinary(file);
     if (url) {
+      toast.success("Image uploaded successfully", { id: toastId });
       const img = new Image()
       img.onload = () => updateAd({ media: url, imgNaturalW: img.width, imgNaturalH: img.height })
       img.src = url
     } else {
       // Fallback to local preview if upload fails (optional)
+      toast.error("Upload failed. Using local preview.", { id: toastId });
       const reader = new FileReader()
       reader.onload = ev => {
         const img = new Image()
@@ -422,14 +449,17 @@ export default function CampaignManager() {
     const file = e.target.files[0]; if (!file) return;
     
     if (!file.type.startsWith('image/')) {
-      alert("Only images and GIFs are allowed!");
+      toast.error("Only images and GIFs are allowed!");
       return;
     }
 
+    const toastId = toast.loading("Uploading background...");
     const url = await uploadToCloudinary(file);
     if (url) {
+      toast.success("Background uploaded successfully", { id: toastId });
       setCanvasBgImage(url);
     } else {
+      toast.error("Upload failed. Using local preview.", { id: toastId });
       const reader = new FileReader()
       reader.onload = ev => setCanvasBgImage(ev.target.result)
       reader.readAsDataURL(file)
@@ -674,8 +704,8 @@ export default function CampaignManager() {
                 <span className="cm-topbar-title">{isEditing ? `Editing: ${campaignId}` : 'New Campaign'}</span>
               </div>
               <div className="cm-topbar-right">
-                {isEditing && <button className="cm-btn-danger" onClick={deleteCampaign}>Delete</button>}
-                <button className="cm-btn-primary" onClick={handleSubmitClick}>Submit for review</button>
+                {isEditing && currentCampaignStatus === 'draft' && <button className="cm-btn-danger" onClick={deleteCampaign}>Delete</button>}
+                {currentCampaignStatus === 'draft' && <button className="cm-btn-primary" onClick={handleSubmitClick}>Submit for review</button>}
               </div>
             </div>
 
@@ -897,11 +927,19 @@ export default function CampaignManager() {
             <div className="cm-divider"/>
 
             <div className="cm-ad-actions">
-              <button className="cm-btn-primary cm-btn-full" onClick={saveCampaign}>Save draft (local)</button>
-              <div className="cm-ad-action-row">
-                <button className="cm-btn-ghost cm-btn-flex" onClick={saveCampaign}>Save draft</button>
-                <button className="cm-btn-danger-sm" onClick={deleteAd}>Delete ad</button>
-              </div>
+              {currentCampaignStatus === 'draft' ? (
+                <>
+                  <button className="cm-btn-primary cm-btn-full" onClick={saveCampaign}>Save draft (local)</button>
+                  <div className="cm-ad-action-row">
+                    <button className="cm-btn-ghost cm-btn-flex" onClick={saveCampaign}>Save draft</button>
+                    <button className="cm-btn-danger-sm" onClick={deleteAd}>Delete ad</button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: '0.8rem', padding: '1rem' }}>
+                  This campaign is {currentCampaignStatus} and cannot be edited.
+                </div>
+              )}
             </div>
 
           </div>{/* end settings */}
@@ -1064,7 +1102,7 @@ export default function CampaignManager() {
         <SubmitCampaignModal
           ads={ads}
           campaignId={campaignId}
-          brandId={parseInt(currentAd.brand) || null}
+          brandId={parseInt(currentAd.brand || ads.find(a => a.brand)?.brand) || null}
           userId={userId}
           onConfirm={handleModalConfirm}
           onClose={() => setShowSubmitModal(false)}

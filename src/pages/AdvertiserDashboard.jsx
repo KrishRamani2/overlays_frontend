@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { getAllBrandsWithStats, getBillingTransactions } from '../assets/overlaysStore'
 import DownloadReportModal from './DownloadReportModal'
 import { getAdvertiserMe, logoutAdvertiser } from '../api/auth'
+import toast from 'react-hot-toast'
 import './AdvertiserDashboard.css'
 
 const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
@@ -117,23 +118,22 @@ function EarningsChart({ data }) {
 }
 
 function WalletModal({ isOpen, onClose, currentBalance, onTopup, isLoading }) {
-  const [amount, setAmount] = useState('')
+  const [topupAmount, setTopupAmount] = useState('')
   const [selectedPreset, setSelectedPreset] = useState(null)
 
   const presets = [500, 1000, 2000, 5000, 10000]
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    const val = parseFloat(amount)
-    if (isNaN(val) || val <= 0) {
-      alert('Please enter a valid amount')
+  const handleTopup = () => {
+    const amount = parseFloat(topupAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount')
       return
     }
-    onTopup(val)
+    onTopup(amount)
   }
 
   const handlePreset = (val) => {
-    setAmount(val.toString())
+    setTopupAmount(val.toString())
     setSelectedPreset(val)
   }
 
@@ -154,7 +154,7 @@ function WalletModal({ isOpen, onClose, currentBalance, onTopup, isLoading }) {
             <span className="wallet-balance-value">₹{parseFloat(currentBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
 
-          <form onSubmit={handleSubmit} className="wallet-form">
+          <form onSubmit={(e) => { e.preventDefault(); handleTopup(); }} className="wallet-form">
             <div className="ad-form-group">
               <label className="ad-label">Enter Amount (₹)</label>
               <div className="amount-input-wrap">
@@ -163,9 +163,9 @@ function WalletModal({ isOpen, onClose, currentBalance, onTopup, isLoading }) {
                   type="number" 
                   className="ad-input amount-input"
                   placeholder="0.00"
-                  value={amount}
+                  value={topupAmount}
                   onChange={(e) => {
-                    setAmount(e.target.value)
+                    setTopupAmount(e.target.value)
                     setSelectedPreset(null)
                   }}
                   required
@@ -197,7 +197,7 @@ function WalletModal({ isOpen, onClose, currentBalance, onTopup, isLoading }) {
             <button 
               type="submit" 
               className="ad-btn-primary wallet-submit-btn" 
-              disabled={isLoading || !amount}
+              disabled={isLoading || !topupAmount}
             >
               {isLoading ? 'Processing...' : 'Pay & Add Funds'}
             </button>
@@ -264,6 +264,7 @@ export default function AdvertiserDashboard() {
   const [billingSummary, setBillingSummary] = useState(null)
   const [showWalletModal, setShowWalletModal] = useState(false)
   const [isTopupLoading, setIsTopupLoading] = useState(false)
+  const [topupAmount, setTopupAmount] = useState('')
 
   const [showAddBrandModal, setShowAddBrandModal] = useState(false)
   const [showAllocateModal, setShowAllocateModal] = useState(false)
@@ -362,19 +363,15 @@ export default function AdvertiserDashboard() {
         body: JSON.stringify(newData)
       });
       if (res.ok) {
-        const data = await res.json();
-        setUser(prev => ({ 
-          ...prev, 
-          name: data.name,
-          email: data.email,
-          company_name: data.company_name,
-          active: data.active
-        }));
-        alert('Settings saved successfully!');
+        setUser(newData)
+        toast.success('Settings saved successfully!');
+      } else {
+        const err = await res.json()
+        toast.error(`Failed to save settings: ${err.detail || 'Unknown error'}`);
       }
     } catch (err) {
-      console.error(err);
-      alert('Failed to save settings');
+      toast.error('Failed to connect to the server.');
+      console.error(err)
     }
   }
 
@@ -386,11 +383,14 @@ export default function AdvertiserDashboard() {
         credentials: 'include'
       });
       if (res.ok) {
-        logoutAdvertiser();
+        logoutAdvertiser()
+        navigate('/login/advertiser')
+      } else {
+        toast.error('Failed to delete account');
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to delete account');
+      toast.error('Failed to delete account');
     }
   }
 
@@ -402,12 +402,11 @@ export default function AdvertiserDashboard() {
         credentials: 'include'
       });
       if (res.ok) {
-        const data = await res.json();
         setUser(prev => ({ ...prev, active: false }));
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to deactivate account');
+      toast.error('Failed to deactivate account');
     }
   }
 
@@ -456,14 +455,14 @@ export default function AdvertiserDashboard() {
         setBrandsList(prev => [...prev, newBrand])
         setShowAddBrandModal(false)
         setRefresh(r => r + 1)
-        alert('Brand added successfully!')
+        toast.success('Brand added successfully!')
       } else {
         const err = await res.json()
-        alert(err.detail || 'Failed to add brand')
+        toast.error(err.detail || 'Failed to add brand')
       }
     } catch (err) {
       console.error(err)
-      alert('Failed to add brand')
+      toast.error('Failed to connect to server')
     } finally {
       setIsBrandLoading(false)
     }
@@ -488,16 +487,16 @@ export default function AdvertiserDashboard() {
       if (res.ok) {
         const updatedBrand = await res.json()
         setBrandsList(prev => prev.map(b => b.id === brandId ? updatedBrand : b))
-        setShowAllocateModal(false)
         setRefresh(r => r + 1)
-        alert(`Successfully allocated \u20b9${amount} to ${updatedBrand.brand_name}`)
+        setShowAllocateModal(false)
+        toast.success(`Successfully allocated ₹${amount} to ${updatedBrand.brand_name}`)
       } else {
         const err = await res.json()
-        alert(err.detail || 'Failed to allocate budget')
+        toast.error(err.detail || 'Failed to allocate budget')
       }
     } catch (err) {
       console.error(err)
-      alert('Failed to allocate budget')
+      toast.error('Failed to connect to server')
     } finally {
       setIsBrandLoading(false)
     }
@@ -523,14 +522,14 @@ export default function AdvertiserDashboard() {
         setShowAddBrandModal(false)
         setBrandToEdit(null)
         setRefresh(r => r + 1)
-        alert('Brand updated successfully!')
+        toast.success('Brand updated successfully!')
       } else {
         const err = await res.json()
-        alert(err.detail || 'Failed to update brand')
+        toast.error(err.detail || 'Failed to update brand')
       }
     } catch (err) {
       console.error(err)
-      alert('Failed to update brand')
+      toast.error('Failed to connect to server')
     } finally {
       setIsBrandLoading(false)
     }
@@ -548,14 +547,14 @@ export default function AdvertiserDashboard() {
         setBrandsList(prev => prev.filter(b => b.id !== brandId))
         setSelectedBrand(null)
         setRefresh(r => r + 1)
-        alert('Brand deleted successfully!')
+        toast.success('Brand deleted successfully!')
       } else {
         const err = await res.json()
-        alert(err.detail || 'Failed to delete brand')
+        toast.error(err.detail || 'Failed to delete brand')
       }
     } catch (err) {
       console.error(err)
-      alert('Failed to delete brand')
+      toast.error('Failed to connect to server')
     } finally {
       setIsBrandLoading(false)
     }
@@ -586,15 +585,16 @@ export default function AdvertiserDashboard() {
         const data = await res.json()
         setWallet(data.wallet)
         setShowWalletModal(false)
+        setTopupAmount('')
         setRefresh(r => r + 1)
-        alert(`Successfully added ₹${amount} to your wallet!`)
+        toast.success(`Successfully added ₹${amount} to your wallet!`)
       } else {
         const err = await res.json()
-        alert(`Failed to add amount: ${err.detail || 'Unknown error'}`)
+        toast.error(`Failed to add amount: ${err.detail || 'Unknown error'}`)
       }
     } catch (err) {
       console.error(err)
-      alert('Network error during topup')
+      toast.error('Network error during topup')
     } finally {
       setIsTopupLoading(false)
     }
@@ -1533,7 +1533,8 @@ export default function AdvertiserDashboard() {
           brands={BRANDS}
           onClose={() => setShowDownloadModal(false)}
           onDownload={(config) => {
-            alert(`Generating ${config.fileType} report for ${config.brand} (Tier: ${config.tier}).\nPassword Protecion: ${config.locked ? 'Enabled' : 'Disabled'}`)
+            setShowDownloadModal(false)
+            toast.success(`Generating ${config.fileType} report for ${config.brand} (Tier: ${config.tier}).\nPassword Protecion: ${config.locked ? 'Enabled' : 'Disabled'}`, { duration: 4000 })
           }}
         />
       )}

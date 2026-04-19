@@ -1,6 +1,7 @@
 /* SubmitCampaignModal.jsx */
 import { useState, useMemo, useEffect } from 'react'
 import './SubmitCampaignModal.css'
+import toast from 'react-hot-toast'
 
 const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
 
@@ -67,7 +68,7 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
   useEffect(() => {
     if (!brandId || !userId) return
     setLoadingBudget(true)
-    fetch(`${ADV_BASE}/api/accounts/${userId}/billing/brands/${brandId}/budget-status`, {
+    fetch(`${ADV_BASE}/api/accounts/${userId}/billing/brands/${brandId}`, {
       credentials: 'include'
     })
       .then(res => res.ok ? res.json() : null)
@@ -131,9 +132,9 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
     : false
 
   const handleConfirm = () => {
-    if (!tier) { alert('Please select a streamer tier'); return }
-    if (days < 1) { alert('Duration must be at least 1 day'); return }
-    if (budgetExceeded) { alert('Estimated cost exceeds brand budget. Please reduce scope or increase budget.'); return }
+    if (!tier) { toast.error('Please select a streamer tier'); return }
+    if (days < 1) { toast.error('Duration must be at least 1 day'); return }
+    if (budgetExceeded) { toast.error('Estimated cost exceeds brand budget. Please reduce scope or increase budget.'); return }
     onConfirm({ tier, exclusive, daysLive: days, frequency, estimatedCost: costBreakdown.totalCost })
   }
 
@@ -154,31 +155,29 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
         <div className="scm-section">
           <div className="scm-section-label">Brand Budget</div>
           {loadingBudget ? (
-            <div className="scm-budget-loading">Loading budget…</div>
+            <div className="scm-budget-loading">
+              <div className="scm-spinner-sm"/> Loading budget data...
+            </div>
           ) : budgetStatus ? (
-            <div className="scm-brand-budget-box">
-              <div className="scm-budget-row-info">
+            <div className="scm-budget-card">
+              <div className="scm-budget-row">
                 <div className="scm-budget-item">
                   <span className="scm-budget-item-label">Allocated</span>
-                  <span className="scm-budget-item-value">{formatINR(budgetStatus.allocated_budget_rupees)}</span>
-                </div>
-                <div className="scm-budget-item">
-                  <span className="scm-budget-item-label">Spent</span>
-                  <span className="scm-budget-item-value scm-spent">{formatINR(budgetStatus.spent_rupees)}</span>
+                  <span className="scm-budget-item-value">{budgetStatus.allocated_rupees}</span>
                 </div>
                 <div className="scm-budget-item">
                   <span className="scm-budget-item-label">Remaining</span>
-                  <span className="scm-budget-item-value scm-remaining">{formatINR(budgetStatus.remaining_rupees)}</span>
+                  <span className="scm-budget-item-value scm-remaining">{formatINR(budgetStatus.remaining_cents / 100)}</span>
                 </div>
               </div>
               <div className="scm-budget-bar-wrap">
                 <div className="scm-budget-bar-track">
                   <div className="scm-budget-bar-spent" style={{
-                    width: `${Math.min(100, (budgetStatus.spent_rupees / Math.max(1, budgetStatus.allocated_budget_rupees)) * 100)}%`
+                    width: `${Math.min(100, (budgetStatus.spent_cents / Math.max(1, budgetStatus.allocated_cents)) * 100)}%`
                   }}/>
                 </div>
                 <span className="scm-budget-bar-label">
-                  {Math.round((budgetStatus.spent_rupees / Math.max(1, budgetStatus.allocated_budget_rupees)) * 100)}% used
+                  {Math.round((budgetStatus.spent_cents / Math.max(1, budgetStatus.allocated_cents)) * 100)}% used
                 </span>
               </div>
             </div>

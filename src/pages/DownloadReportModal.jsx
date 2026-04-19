@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import './DownloadReportModal.css'
 
 export default function DownloadReportModal({ brands, onClose, onDownload }) {
@@ -112,7 +113,7 @@ export default function DownloadReportModal({ brands, onClose, onDownload }) {
                         <span className="drm-password">{password}</span>
                         <button className="drm-copy-btn" onClick={() => {
                             navigator.clipboard.writeText(password)
-                            alert("Password copied to clipboard")
+                            toast.success("Password copied to clipboard")
                         }}>Copy</button>
                     </div>
                 )}

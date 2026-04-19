@@ -8,10 +8,12 @@ import CampaignManager from './pages/CampaignManager'
 import AdvertiserDashboard from './pages/AdvertiserDashboard'
 import AdvertiserSetup from './pages/AdvertiserSetup'
 import ProtectedRoute from './components/ProtectedRoute'
+import { Toaster } from 'react-hot-toast'
 
 function App() {
   return (
     <BrowserRouter>
+      <Toaster position="bottom-right" />
       <Routes>
         <Route path="/" element={
             <Home />
