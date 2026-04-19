@@ -200,8 +200,26 @@ export default function CampaignManager() {
   /* ── Grid ── */
   const toggleGridCell = (idx) => {
     const cur = currentAd.gridSelection
-    let next = cur.includes(idx) ? cur.filter(i=>i!==idx) : [...cur,idx]
-    if (!next.length || !isContiguous(next)) return
+    const isRemoving = cur.includes(idx)
+    let next = isRemoving ? cur.filter(i=>i!==idx) : [...cur,idx]
+    
+    // Constraints:
+    // 1. Cannot be empty
+    if (!next.length) {
+      toast.error("At least one grid cell must be selected");
+      return
+    }
+    // 2. Max 3 selected
+    if (next.length > 3 && !isRemoving) {
+      toast.error("Maximum 3 grid cells can be selected");
+      return
+    }
+
+    if (!isContiguous(next)) {
+      toast.error("Grid cells must be contiguous");
+      return
+    }
+
     const b = getGridBounds(next)
     updateAd({ gridSelection:next, layout:{ ...currentAd.layout, banner:{...currentAd.layout.banner,...b} } })
   }
@@ -237,7 +255,12 @@ export default function CampaignManager() {
       text_style: JSON.stringify(ad.styles),
       image_url: ad.media,
       image_rotate: ad.imgRotate || 0,
+      image_x: ad.layout.img.x,
+      image_y: ad.layout.img.y,
       image_width: Math.round(ad.layout.img.w),
+      text_x: ad.layout.text.x,
+      text_y: ad.layout.text.y,
+      text_size: ad.layout.text.size || ad.fontSize,
       lock_aspect_ratio: ad.imgLockRatio,
       z_order: ad.zOrder.img,
       text_z_order: ad.zOrder.text,
@@ -253,6 +276,14 @@ export default function CampaignManager() {
 
   const saveCampaign = () => {
     if (!campaignId.trim()) { toast.error('Campaign ID is required'); return }
+    
+    // Ensure all ads have at least one grid cell
+    const emptyGrid = ads.find(a => !a.gridSelection || a.gridSelection.length === 0)
+    if (emptyGrid) {
+      toast.error(`Variation "${emptyGrid.name}" must have at least one grid cell selected.`);
+      return
+    }
+
     // Save locally only — does NOT persist to backend
     const localData = { id: campaignId, campaign_id: campaignId, campaign_name: currentAd.visibleName || campaignId, duration, ads, status: 'draft', savedAt: new Date().toISOString() }
     setCampaigns(prev => {
@@ -267,6 +298,14 @@ export default function CampaignManager() {
   const handleSubmitClick = () => {
     if (!campaignId.trim()) { toast.error('Campaign ID is required'); return }
     if (!currentAd.brand) { toast.error('Please select a brand for the ad first'); return }
+
+    // Ensure all ads have at least one grid cell
+    const emptyGrid = ads.find(a => !a.gridSelection || a.gridSelection.length === 0)
+    if (emptyGrid) {
+      toast.error(`Variation "${emptyGrid.name}" must have at least one grid cell selected.`);
+      return
+    }
+
     setShowSubmitModal(true)
   }
 
@@ -323,9 +362,90 @@ export default function CampaignManager() {
   };
 
 
-  const loadCampaign = (c) => {
-    setCampaignId(c.campaign_id || c.id); setDuration(c.duration); setAds(c.ads || [defaultAd(0)])
-    setCurrentAdIdx(0); setIsEditing(true); setActiveCampaignId(c.campaign_id || c.id); setSelected(null)
+  const loadCampaign = async (c) => {
+    const cid = c.campaign_id || c.id
+    setActiveCampaignId(cid)
+    setCampaignId(cid)
+    setIsEditing(true)
+    setSelected(null)
+    setCurrentAdIdx(0)
+
+    try {
+      const res = await fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns/${cid}`, { credentials: 'include' })
+      if (!res.ok) throw new Error("Failed to fetch details")
+      const data = await res.json()
+      
+      const campaign = data.campaign
+      setDuration(campaign.duration_seconds || 10)
+
+      if (data.ads && data.ads.length > 0) {
+        const mappedAds = data.ads.map((ad, idx) => {
+          const base = defaultAd(idx)
+          let styles = { bold: false, italic: false, underline: false, heading: false }
+          try {
+            if (ad.text_style) styles = JSON.parse(ad.text_style)
+          } catch(e) {}
+
+          return {
+            ...base,
+            name: ad.ad_name,
+            visibleName: ad.ad_name,
+            type: ad.ad_type,
+            text: ad.ad_copy || '',
+            fontColor: ad.text_color || '#ffffff',
+            styles: styles,
+            media: ad.image_url || '',
+            imgRotate: ad.image_rotate || 0,
+            imgLockRatio: ad.lock_aspect_ratio ?? true,
+            contentScale: ad.content_zoom || 1,
+            bgColor: ad.banner_background_color || '#0E0F14',
+            animType: ad.entrance_animation || 'fade',
+            animSpeed: ad.animation_speed || 0.7,
+            brand: ad.brand_id?.toString() || '',
+            gridSelection: ad.grid_cell_placement ? ad.grid_cell_placement.split(',').map(Number) : [6,7,8],
+            zOrder: { img: ad.z_order || 1, text: ad.text_z_order || 2 },
+            fontSize: ad.text_size || base.fontSize,
+            layout: {
+              ...base.layout,
+              img: { 
+                ...base.layout.img, 
+                x: ad.image_x ?? base.layout.img.x,
+                y: ad.image_y ?? base.layout.img.y,
+                w: ad.image_width || 180 
+              },
+              text: {
+                ...base.layout.text,
+                x: ad.text_x ?? base.layout.text.x,
+                y: ad.text_y ?? base.layout.text.y,
+                size: ad.text_size || base.layout.text.size
+              }
+            }
+          }
+        })
+
+        // Also update the banner layout for each ad based on its grid selection
+        const finalizedAds = mappedAds.map(ad => {
+          const b = getGridBounds(ad.gridSelection)
+          return {
+            ...ad,
+            layout: { ...ad.layout, banner: { ...ad.layout.banner, ...b } }
+          }
+        })
+
+        setAds(finalizedAds)
+
+        // Global backgrounds from the first ad (since they are currently shared in the UI)
+        if (data.ads[0].canvas_background) setCanvasBgColor(data.ads[0].canvas_background)
+        if (data.ads[0].stream_background_url) setCanvasBgImage(data.ads[0].stream_background_url)
+      } else {
+        setAds([defaultAd(0)])
+      }
+    } catch (err) {
+      console.error("Load error:", err)
+      toast.error("Failed to load campaign details from server.")
+      // Fallback to what we have in the list if any
+      setAds(c.ads || [defaultAd(0)])
+    }
   }
   const deleteCampaign = async () => {
     if (!window.confirm('Delete this campaign?')) return
@@ -620,15 +740,7 @@ export default function CampaignManager() {
           <span className="cm-topnav-divider"/>
           <span className="cm-topnav-role">Agency Portal</span>
         </div>
-        <div className="cm-topnav-right-main">
-          <button className="cm-wallet-btn" title="Wallet">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
-              <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
-              <path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/>
-            </svg>
-          </button>
-        </div>
+        
       </nav>
 
       <div className="cm-body-wrap">
@@ -711,8 +823,13 @@ export default function CampaignManager() {
 
         <div className="cm-workspace">
 
-          {/* ── Settings ── */}
-          <div className="cm-settings">
+            {/* Settings */}
+            <div className="cm-settings" style={{ position: 'relative' }}>
+              {currentCampaignStatus !== 'draft' && (
+                <div className="cm-readonly-overlay">
+                  <span>This campaign is {currentCampaignStatus} and cannot be edited.</span>
+                </div>
+              )}
 
             {/* Ad tabs */}
             <div className="cm-field-label">Ad Variations</div>
@@ -727,7 +844,7 @@ export default function CampaignManager() {
 
             <div className="cm-field">
               <label className="cm-field-label">Brand</label>
-              <select className="cm-select" value={currentAd.brand} onChange={e=>updateAd({brand:e.target.value})}>
+              <select className="cm-select" value={currentAd.brand} onChange={e=>updateAd({brand:e.target.value})} disabled={currentCampaignStatus !== 'draft'}>
                 <option value="">Select a brand</option>
                 {availableBrands.map(b => (
                   <option key={b.id} value={b.id}>{b.brand_name}</option>
@@ -744,7 +861,7 @@ export default function CampaignManager() {
             <div className="cm-field">
               <label className="cm-field-label">Name visible to streamer</label>
               <input className="cm-input" placeholder="e.g. Summer Campaign"
-                value={currentAd.visibleName} onChange={e=>updateAd({visibleName:e.target.value})}/>
+                value={currentAd.visibleName} onChange={e=>updateAd({visibleName:e.target.value})} disabled={currentCampaignStatus !== 'draft'}/>
             </div>
 
             <div className="cm-field">
@@ -1073,14 +1190,14 @@ export default function CampaignManager() {
                   )}
                 </div>
 
-                {/* Grid bounds dashed outline */}
-                {!hideGrid && (
-                  <div style={{
-                    position:'absolute', pointerEvents:'none',
-                    left:bounds.x, top:bounds.y, width:bounds.w, height:bounds.h,
-                    border:'2px dashed rgba(59,91,255,0.35)', borderRadius:4,
-                  }}/>
-                )}
+                {/* Grid bounds dashed outline - always visible for reference */}
+                <div style={{
+                  position:'absolute', pointerEvents:'none',
+                  left:bounds.x, top:bounds.y, width:bounds.w, height:bounds.h,
+                  border: hideGrid ? '1px dashed rgba(59,91,255,0.2)' : '2px dashed rgba(59,91,255,0.4)', 
+                  borderRadius:4,
+                  transition: 'all 0.3s ease'
+                }}/>
 
               </div>{/* end cm-scaler */}
             </div>{/* end cm-sim-wrap */}
