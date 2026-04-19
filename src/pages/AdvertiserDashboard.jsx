@@ -16,8 +16,9 @@ const AGENCY_USER = {
   name: 'Loading...',
   email: '',
   id: '',
-  picture: '',
-  company_name: 'Loading...',
+  picture: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150&h=150',
+  company_name: 'Zenith Media',
+  company_type: 'agency',
   active: true,
 }
 
@@ -229,8 +230,6 @@ export default function AdvertiserDashboard() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const companyType = searchParams.get('type') || 'agency' // 'brands' or 'agency'
-  const isSingleBrand = companyType === 'brands'
   const [activePage, setActivePage]         = useState(() => {
     const page = searchParams.get('page')
     return (page && ['overview','billing','settings'].includes(page)) ? page : 'overview'
@@ -263,6 +262,9 @@ export default function AdvertiserDashboard() {
   })
   const [billingSummary, setBillingSummary] = useState(null)
   const [showWalletModal, setShowWalletModal] = useState(false)
+
+  const companyType = searchParams.get('type') || user.company_type || 'agency'
+  const isSingleBrand = companyType === 'brands' || companyType === 'brand' || user.company_type === 'brand'
   const [isTopupLoading, setIsTopupLoading] = useState(false)
   const [topupAmount, setTopupAmount] = useState('')
 
@@ -292,6 +294,7 @@ export default function AdvertiserDashboard() {
           picture: data.picture || null,
           id: data.id || null,
           company_name: data.company_name || 'My Company',
+          company_type: data.company_type || 'agency',
           active: data.active !== false
         })
       } else {
