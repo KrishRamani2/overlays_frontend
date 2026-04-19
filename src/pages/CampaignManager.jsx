@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { getBrands, addCampaign } from '../assets/overlaysStore'
 import { useNavigate, useParams } from 'react-router-dom'
 import SubmitCampaignModal from './SubmitCampaignModal'
 import './SubmitCampaignModal.css'
@@ -221,6 +220,7 @@ export default function CampaignManager() {
     campaign_id: campaignId,
     campaign_name: currentAd.visibleName || campaignId,
     duration_seconds: duration,
+    brand_id: parseInt(currentAd.brand) || null,
     ads: ads.map(ad => ({
       brand_id: parseInt(ad.brand) || 0,
       ad_name: ad.visibleName || ad.name,
@@ -245,60 +245,69 @@ export default function CampaignManager() {
     }))
   });
 
-  const saveCampaign = async () => {
+  const saveCampaign = () => {
     if (!campaignId.trim()) { alert('Campaign ID is required'); return }
-    
-    const payload = getCampaignPayload();
-
-    try {
-      const res = await fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-
-      if (res.ok) {
-        const localData = { id: campaignId, duration, ads, status: 'pending', savedAt: new Date().toISOString() }
-        setCampaigns(prev => {
-          const i = prev.findIndex(c => c.id === campaignId)
-          if (i >= 0) { const n = [...prev]; n[i] = localData; return n }
-          return [...prev, localData]
-        })
-        setActiveCampaignId(campaignId); setIsEditing(true)
-        alert(`✓ Campaign "${campaignId}" saved successfully!`);
-      } else {
-        const errData = await res.json();
-        alert(`Failed to save campaign: ${errData.detail || 'Server error'}`);
-      }
-    } catch (err) {
-      console.error("Save error:", err);
-      alert("Failed to connect to the server.");
-    }
+    // Save locally only — does NOT persist to backend
+    const localData = { id: campaignId, campaign_id: campaignId, campaign_name: currentAd.visibleName || campaignId, duration, ads, status: 'draft', savedAt: new Date().toISOString() }
+    setCampaigns(prev => {
+      const i = prev.findIndex(c => (c.campaign_id || c.id) === campaignId)
+      if (i >= 0) { const n = [...prev]; n[i] = localData; return n }
+      return [...prev, localData]
+    })
+    setActiveCampaignId(campaignId); setIsEditing(true)
+    alert(`✓ Ad saved locally. Use "Submit for review" to finalize and save to server.`)
   }
 
   const handleSubmitClick = () => {
     if (!campaignId.trim()) { alert('Campaign ID is required'); return }
+    if (!currentAd.brand) { alert('Please select a brand for the ad first'); return }
     setShowSubmitModal(true)
   }
 
-  const handleModalConfirm = async ({ tier, exclusive, daysLive, budgetMin, budgetMax }) => {
+  const handleModalConfirm = async ({ tier, exclusive, daysLive, frequency, estimatedCost }) => {
     const payload = getCampaignPayload();
 
     try {
-      const res = await fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns`, {
+      // Step 1: Save campaign + ads to backend
+      const saveRes = await fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(payload)
       });
 
-      if (res.ok) {
+      if (!saveRes.ok) {
+        const errData = await saveRes.json();
+        alert(`Failed to save campaign: ${errData.detail || 'Server error'}`);
+        return;
+      }
+
+      // Step 2: Submit for review (this deducts from brand budget)
+      const submitRes = await fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns/${campaignId}/submit-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          tier,
+          exclusive,
+          days_live: daysLive,
+          frequency,
+          estimated_cost: estimatedCost,
+          brand_id: parseInt(currentAd.brand) || null,
+        })
+      });
+
+      if (submitRes.ok) {
         setShowSubmitModal(false);
-        alert(`✓ Campaign "${campaignId}" submitted successfully for review!`);
-        initNew(); 
+        alert(`✓ Campaign "${campaignId}" submitted for review! ₹${estimatedCost?.toLocaleString('en-IN') || '0'} deducted from brand budget.`);
+        initNew();
+        // Refresh campaign list
+        fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns`, { credentials: 'include' })
+          .then(res => res.ok ? res.json() : [])
+          .then(data => setCampaigns(data))
+          .catch(err => console.error("Failed to refresh campaigns", err))
       } else {
-        const errData = await res.json();
+        const errData = await submitRes.json();
         alert(`Failed to submit campaign: ${errData.detail || 'Server error'}`);
       }
     } catch (err) {
@@ -649,7 +658,7 @@ export default function CampaignManager() {
                       <span className="cm-c-name">{c.campaign_name || c.campaign_id || 'Untitled'}</span>
                       <span className="cm-c-sub">{c.campaign_id}</span>
                     </div>
-                    <span className={`cm-c-status cm-status-pending`}>pending</span>
+                    <span className={`cm-c-status cm-status-${c.status || 'draft'}`}>{c.status || 'draft'}</span>
                   </div>
                 ))}
               </div>
@@ -888,9 +897,9 @@ export default function CampaignManager() {
             <div className="cm-divider"/>
 
             <div className="cm-ad-actions">
-              <button className="cm-btn-primary cm-btn-full" onClick={saveCampaign}>Save ad</button>
+              <button className="cm-btn-primary cm-btn-full" onClick={saveCampaign}>Save draft (local)</button>
               <div className="cm-ad-action-row">
-                <button className="cm-btn-ghost cm-btn-flex" onClick={saveCampaign}>Submit ad only</button>
+                <button className="cm-btn-ghost cm-btn-flex" onClick={saveCampaign}>Save draft</button>
                 <button className="cm-btn-danger-sm" onClick={deleteAd}>Delete ad</button>
               </div>
             </div>
@@ -1055,7 +1064,8 @@ export default function CampaignManager() {
         <SubmitCampaignModal
           ads={ads}
           campaignId={campaignId}
-          brandName={getBrands().find(b => b.id === currentAd.brand)?.name}
+          brandId={parseInt(currentAd.brand) || null}
+          userId={userId}
           onConfirm={handleModalConfirm}
           onClose={() => setShowSubmitModal(false)}
         />

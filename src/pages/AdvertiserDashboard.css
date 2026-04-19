@@ -446,6 +446,7 @@
 }
 .ad-badge-live     { background: #ECFDF5; color: #059669; border: 1px solid #A7F3D0; }
 .ad-badge-pending  { background: #FEF3C7; color: #D97706; border: 1px solid #FCD34D; }
+.ad-badge-draft    { background: #F3F4F6; color: #6B7280; border: 1px solid #D1D5DB; }
 .ad-badge-rejected { background: #FEF2F2; color: #EF4444; border: 1px solid #FECACA; }
 .ad-badge-ended    { background: var(--off); color: var(--muted); border: 1px solid var(--border); }
 .ad-badge-approved { background: #ECFDF5; color: #059669; border: 1px solid #A7F3D0; }

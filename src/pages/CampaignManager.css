@@ -181,13 +181,17 @@
 .cm-c-item:hover { background: var(--off); }
 .cm-c-item.active { background: var(--blue-soft); border-color: var(--blue); }
 .cm-c-name { font-size: 0.88rem; font-weight: 500; color: var(--ink); }
+.cm-c-sub  { font-size: 0.68rem; color: var(--muted); font-weight: 300; }
 .cm-c-status {
   font-size: 0.68rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.05em;
 }
+.cm-status-draft    { color: #6B7280; }
 .cm-status-pending  { color: #D97706; }
 .cm-status-approved { color: #059669; }
+.cm-status-live     { color: #059669; }
 .cm-status-rejected { color: #EF4444; }
+.cm-status-ended    { color: #6B7280; }
 
 /* ── Editor area ── */
 .cm-editor {

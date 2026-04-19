@@ -10,7 +10,7 @@
 
 .scm-modal {
   background: white; border-radius: 24px;
-  width: 100%; max-width: 620px;
+  width: 100%; max-width: 680px;
   max-height: 90vh; overflow-y: auto;
   box-shadow: 0 32px 80px rgba(0,0,0,0.22);
   display: flex; flex-direction: column;
@@ -56,37 +56,117 @@
   font-size: 0.72rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.1em;
   color: #6B7280; margin-bottom: 0.75rem;
+  display: flex; align-items: center; gap: 0.5rem;
 }
 .scm-divider {
   height: 1px; background: #F3F4F6;
   margin: 0 1.75rem 1.25rem;
 }
 
-/* ── Ad variants ── */
-.scm-variants-list { display: flex; flex-direction: column; gap: 0.5rem; }
-.scm-variant-row {
+/* ── Info button ── */
+.scm-info-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 0.85rem; color: #3B5BFF;
+  padding: 0; line-height: 1;
+  transition: opacity 0.15s;
+}
+.scm-info-btn:hover { opacity: 0.7; }
+
+/* ── Brand Budget Box ── */
+.scm-brand-budget-box {
+  background: #F9FAFB; border: 1.5px solid #E5E7EB;
+  border-radius: 14px; padding: 1rem 1.25rem;
+}
+.scm-budget-row-info {
+  display: flex; gap: 1.5rem; margin-bottom: 0.75rem;
+}
+.scm-budget-item {
+  display: flex; flex-direction: column; gap: 0.15rem;
+}
+.scm-budget-item-label {
+  font-size: 0.68rem; font-weight: 500; color: #9CA3AF;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.scm-budget-item-value {
+  font-size: 1.1rem; font-weight: 600; color: #111827;
+  font-family: 'Cormorant Garamond', serif;
+}
+.scm-budget-item-value.scm-spent { color: #EF4444; }
+.scm-budget-item-value.scm-remaining { color: #10B981; }
+
+.scm-budget-bar-wrap {
   display: flex; align-items: center; gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: #F9FAFB; border: 1px solid #E5E7EB;
-  border-radius: 12px;
 }
-.scm-variant-num {
-  width: 24px; height: 24px; border-radius: 50%;
-  background: #EEF2FF; color: #3B5BFF;
-  font-size: 0.72rem; font-weight: 700;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+.scm-budget-bar-track {
+  flex: 1; height: 6px; background: #E5E7EB;
+  border-radius: 100px; overflow: hidden;
 }
-.scm-variant-info { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; min-width: 0; }
-.scm-variant-name { font-size: 0.87rem; font-weight: 500; color: #111827; }
-.scm-variant-meta { font-size: 0.72rem; color: #9CA3AF; font-weight: 300; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.scm-variant-type-badge {
+.scm-budget-bar-spent {
+  height: 100%; background: linear-gradient(90deg, #3B5BFF, #818CF8);
+  border-radius: 100px;
+  transition: width 0.5s ease;
+}
+.scm-budget-bar-label {
+  font-size: 0.68rem; font-weight: 500; color: #6B7280;
+  white-space: nowrap;
+}
+.scm-budget-loading {
+  font-size: 0.82rem; color: #9CA3AF; font-weight: 300;
+  padding: 0.75rem 0;
+}
+.scm-budget-empty {
+  font-size: 0.82rem; color: #9CA3AF; font-weight: 300;
+  padding: 0.5rem 0;
+}
+.scm-budget-hint { color: #6B7280; }
+
+/* ── CPM Explainer ── */
+.scm-cpm-explainer {
+  background: #F0F4FF; border: 1.5px solid #C7D2FE;
+  border-radius: 14px; padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  animation: scm-fadeIn 0.2s ease;
+}
+@keyframes scm-fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.scm-cpm-title {
+  font-size: 0.82rem; font-weight: 600; color: #3B5BFF;
+  margin-bottom: 0.5rem;
+}
+.scm-cpm-formula {
+  font-family: 'Courier New', monospace;
+  font-size: 0.78rem; color: #111827;
+  background: white; border: 1px solid #C7D2FE;
+  border-radius: 8px; padding: 0.5rem 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.scm-formula-hl {
+  color: #3B5BFF; font-weight: 600;
+}
+.scm-cpm-desc {
+  font-size: 0.75rem; color: #4B5563; line-height: 1.6;
+  margin-bottom: 0.75rem;
+}
+.scm-cpm-table {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem;
+}
+.scm-cpm-col {
+  display: flex; flex-direction: column; gap: 0.25rem;
+}
+.scm-cpm-col-title {
   font-size: 0.65rem; font-weight: 600;
-  background: #F3F4F6; color: #6B7280;
-  border: 1px solid #E5E7EB;
-  padding: 0.15rem 0.5rem; border-radius: 100px;
-  text-transform: uppercase; letter-spacing: 0.06em;
-  flex-shrink: 0;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: #6B7280; margin-bottom: 0.15rem;
+}
+.scm-cpm-row-item {
+  display: flex; justify-content: space-between;
+  font-size: 0.72rem; color: #374151;
+  padding: 0.2rem 0;
+}
+.scm-cpm-row-item span:last-child {
+  font-weight: 600; color: #3B5BFF;
 }
 
 /* ── Tier grid ── */
@@ -110,12 +190,14 @@
   display: block;
 }
 .scm-tier-desc {
-  font-size: 0.62rem; color: #6B7280; font-weight: 300;
+  font-size: 0.6rem; color: #6B7280; font-weight: 300;
   line-height: 1.3; display: block;
 }
-.scm-tier-mult {
+.scm-tier-cpm {
   font-size: 0.65rem; font-weight: 600; color: #3B5BFF;
   display: block; margin-top: 0.2rem;
+  background: rgba(59,91,255,0.08);
+  border-radius: 100px; padding: 0.1rem 0.4rem;
 }
 
 /* ── Exclusive toggle ── */
@@ -173,33 +255,6 @@
   margin-top: 0.4rem;
 }
 
-/* ── Budget ── */
-.scm-budget-row {
-  display: flex; align-items: flex-end; gap: 0.75rem;
-}
-.scm-budget-field { display: flex; flex-direction: column; gap: 0.35rem; flex: 1; }
-.scm-budget-label { font-size: 0.72rem; font-weight: 500; color: #6B7280; }
-.scm-budget-sep { font-size: 1.1rem; color: #D1D5DB; padding-bottom: 0.7rem; }
-.scm-budget-input-wrap {
-  display: flex; align-items: center;
-  border: 1.5px solid #E5E7EB; border-radius: 10px;
-  background: #F9FAFB; overflow: hidden;
-  transition: border-color 0.15s;
-}
-.scm-budget-input-wrap:focus-within { border-color: #3B5BFF; }
-.scm-budget-currency {
-  padding: 0 0.6rem 0 0.85rem;
-  font-size: 0.85rem; color: #6B7280; font-weight: 400;
-  flex-shrink: 0;
-}
-.scm-budget-input {
-  border: none !important; background: transparent !important;
-  padding: 0.65rem 0.75rem 0.65rem 0 !important;
-  border-radius: 0 !important;
-  font-size: 0.9rem; font-weight: 500; color: #111827;
-  width: 100%; outline: none;
-}
-
 /* ── Shared input ── */
 .scm-input {
   background: #F9FAFB; border: 1.5px solid #E5E7EB;
@@ -210,17 +265,87 @@
 }
 .scm-input:focus { border-color: #3B5BFF; }
 
-/* ── Estimate ── */
+/* ── Per-Ad Cost Breakdown ── */
+.scm-ad-cost-list {
+  display: flex; flex-direction: column; gap: 0.65rem;
+}
+.scm-ad-cost-card {
+  background: #F9FAFB; border: 1.5px solid #E5E7EB;
+  border-radius: 14px; padding: 0.85rem 1rem;
+  transition: border-color 0.15s;
+}
+.scm-ad-cost-card:hover { border-color: #C7D2FE; }
+
+.scm-ad-cost-header {
+  display: flex; justify-content: space-between;
+  align-items: center; margin-bottom: 0.5rem;
+}
+.scm-ad-cost-name {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.87rem; font-weight: 500; color: #111827;
+}
+.scm-ad-cost-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #EEF2FF; color: #3B5BFF;
+  font-size: 0.68rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.scm-ad-cost-subtotal {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.15rem; font-weight: 600; color: #111827;
+}
+
+.scm-ad-cost-details {
+  display: flex; flex-wrap: wrap; gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+.scm-ad-cost-chip {
+  display: flex; align-items: center; gap: 0.3rem;
+  background: white; border: 1px solid #E5E7EB;
+  border-radius: 100px; padding: 0.2rem 0.6rem;
+  font-size: 0.68rem;
+}
+.scm-chip-label {
+  color: #9CA3AF; font-weight: 500;
+}
+.scm-chip-value {
+  color: #374151; font-weight: 600;
+}
+
+.scm-ad-formula {
+  font-size: 0.65rem; color: #9CA3AF; font-weight: 300;
+  font-family: 'Courier New', monospace;
+  padding: 0.35rem 0.5rem;
+  background: white;
+  border: 1px dashed #E5E7EB;
+  border-radius: 6px;
+  line-height: 1.5;
+}
+.scm-ad-formula strong {
+  color: #3B5BFF; font-weight: 700;
+}
+
+/* ── Estimate Box ── */
 .scm-estimate-box {
   margin: 0 1.75rem 1.25rem;
   background: #F0F4FF; border: 1.5px solid #C7D2FE;
   border-radius: 16px; padding: 1.1rem 1.25rem;
+  transition: all 0.2s;
+}
+.scm-estimate-box.scm-estimate-exceeded {
+  background: #FEF2F2; border-color: #FCA5A5;
+}
+.scm-estimate-top {
+  display: flex; justify-content: space-between;
+  align-items: flex-start; gap: 1rem;
 }
 .scm-estimate-label {
   font-size: 0.7rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.1em;
   color: #3B5BFF; margin-bottom: 0.3rem;
 }
+.scm-estimate-exceeded .scm-estimate-label { color: #EF4444; }
 .scm-estimate-range {
   font-family: 'Cormorant Garamond', serif;
   font-size: 1.6rem; font-weight: 600;
@@ -228,6 +353,51 @@
 }
 .scm-estimate-meta {
   font-size: 0.72rem; color: #6B7280; font-weight: 300; margin-top: 0.2rem;
+}
+.scm-exclusive-badge {
+  background: #FEF3C7; color: #92400E;
+  font-size: 0.68rem; font-weight: 600;
+  padding: 0.25rem 0.65rem; border-radius: 100px;
+  border: 1px solid #FDE68A;
+  white-space: nowrap;
+}
+
+/* ── Budget Compare ── */
+.scm-budget-compare {
+  margin-top: 1rem;
+  background: white;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  border: 1.5px solid #E5E7EB;
+}
+.scm-budget-compare.exceeded { border-color: #FCA5A5; }
+.scm-budget-compare.within { border-color: #86EFAC; }
+
+.scm-budget-compare-row {
+  display: flex; justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem; color: #374151;
+  padding: 0.25rem 0;
+}
+.scm-compare-val {
+  font-weight: 600; color: #111827;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 0.95rem;
+}
+.scm-budget-compare-divider {
+  height: 1px; background: #E5E7EB;
+  margin: 0.5rem 0;
+}
+.scm-budget-verdict {
+  display: flex; align-items: flex-start; gap: 0.5rem;
+  font-size: 0.78rem; font-weight: 400;
+  padding: 0.5rem 0 0;
+  line-height: 1.5;
+}
+.scm-budget-verdict.good { color: #059669; }
+.scm-budget-verdict.bad  { color: #DC2626; }
+.scm-verdict-icon {
+  font-size: 0.9rem; flex-shrink: 0; margin-top: 0.05rem;
 }
 
 /* ── Actions ── */
@@ -252,6 +422,13 @@
   white-space: nowrap;
 }
 .scm-btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+.scm-btn-primary.scm-btn-disabled {
+  background: #9CA3AF; cursor: not-allowed;
+  opacity: 0.7;
+}
+.scm-btn-primary.scm-btn-disabled:hover {
+  opacity: 0.7; transform: none;
+}
 
 /* ── Scrollbar ── */
 .scm-modal::-webkit-scrollbar { width: 6px; }

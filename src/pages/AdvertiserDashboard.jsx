@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
-import { getAllBrandsWithStats, getCampaigns, getBillingTransactions } from '../assets/overlaysStore'
+import { getAllBrandsWithStats, getBillingTransactions } from '../assets/overlaysStore'
 import DownloadReportModal from './DownloadReportModal'
 import { getAdvertiserMe, logoutAdvertiser } from '../api/auth'
 import './AdvertiserDashboard.css'
@@ -270,6 +270,8 @@ export default function AdvertiserDashboard() {
   const [brandToAllocate, setBrandToAllocate] = useState(null)
   const [isBrandLoading, setIsBrandLoading] = useState(false)
   const [refresh, setRefresh] = useState(0)
+  const [brandCampaignsData, setBrandCampaignsData] = useState({})
+  const [allCampaigns, setAllCampaigns] = useState([])
 
   const chartData = {
     weekly:  AGENCY_WEEKLY,
@@ -334,7 +336,22 @@ export default function AdvertiserDashboard() {
 
     fetchBillingData()
     fetchMonthlySpend()
+
+    // Fetch all campaigns for this user
+    fetch(`${ADV_BASE}/api/accounts/${id}/campaigns`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setAllCampaigns(data))
+      .catch(err => console.error('Failed to fetch campaigns', err))
   }, [id, refresh])
+
+  // Fetch campaigns when a brand is selected
+  const fetchBrandCampaigns = (brandId) => {
+    if (!brandId || !id) return
+    fetch(`${ADV_BASE}/api/accounts/${id}/brands/${brandId}/campaigns`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setBrandCampaignsData(prev => ({ ...prev, [brandId]: data })))
+      .catch(err => console.error('Failed to fetch brand campaigns', err))
+  }
 
   const saveSettings = async (newData) => {
     try {
@@ -583,19 +600,15 @@ export default function AdvertiserDashboard() {
     }
   }
 
-  // Map real brands to UI format and merge with mock stats for demo
-  const MOCK_STATS_TEMPLATE = {
-    spend: '₹42K', spendRaw: 42000,
-    streams: 18, campaigns: 3,
-    budgetAllocated: 60000,
-    color: '#3B5BFF'
-  }
+
 
 
   const BRANDS = brandsList.map((b, i) => {
     const allocated = parseFloat(b.allocated_budget_rupees || 0)
+    // Count campaigns for this brand from allCampaigns
+    const brandCamps = allCampaigns.filter(c => c.brand_id === b.id)
+    const campaignCount = brandCamps.length
     return {
-      ...MOCK_STATS_TEMPLATE,
       id: b.id,
       name: b.brand_name,
       category: b.target_audience || 'Brand',
@@ -606,8 +619,10 @@ export default function AdvertiserDashboard() {
       spent_rupees: parseFloat(b.spent_rupees || 0),
       remaining_budget_rupees: parseFloat(b.remaining_budget_rupees || 0),
       locked: allocated === 0,
-      totalSpend: `₹${parseFloat(b.spent_rupees || 0).toLocaleString()}`,
-      spendRaw: parseFloat(b.spent_rupees || 0)
+      totalSpend: `\u20b9${parseFloat(b.spent_rupees || 0).toLocaleString()}`,
+      spendRaw: parseFloat(b.spent_rupees || 0),
+      campaigns: campaignCount,
+      streams: 0,
     }
   })
 
@@ -615,10 +630,10 @@ export default function AdvertiserDashboard() {
   const totalSpend    = parseFloat(wallet.spent_rupees || 0)
   const totalBudget   = parseFloat(wallet.budget_rupees || 0)
   const totalBalance  = parseFloat(wallet.balance_rupees || 0)
-  const totalCampaigns = BRANDS.reduce((s, b) => s + (b.campaigns || 0), 0)
+  const totalCampaigns = allCampaigns.length
 
   const activeBrand    = selectedBrand ? BRANDS.find(b => b.id === selectedBrand) : null
-  const brandCampaigns = selectedBrand ? getCampaigns(selectedBrand) : []
+  const brandCampaigns = selectedBrand ? (brandCampaignsData[selectedBrand] || []) : []
 
   /* Billing filters */
   const BILLING_TRANSACTIONS = getBillingTransactions()
@@ -745,7 +760,7 @@ export default function AdvertiserDashboard() {
 
             const brandBudget = brand.allocated_budget_rupees || 0
             const brandRemaining = brand.remaining_budget_rupees || 0
-            const brandCamps = getCampaigns(brand.id)
+            const brandCamps = allCampaigns.filter(c => c.brand_id === brand.id)
             return (
               <div className="ad-content">
                 <div className="ad-page-header">
@@ -763,8 +778,8 @@ export default function AdvertiserDashboard() {
                   {[
                     { label: 'Total Spent', value: brand.totalSpend, sub: 'Campaign spending' },
                     { label: 'Budget Remaining', value: `₹${parseFloat(brand.remaining_budget_rupees || 0).toLocaleString()}`, sub: `of ₹${parseFloat(brand.allocated_budget_rupees || 0).toLocaleString()} allocated` },
-                    { label: 'Live Streams', value: brand.streams || 0, sub: 'Total streams', highlight: true },
-                    { label: 'Campaigns', value: brand.campaigns || 0, sub: 'Active & completed' },
+                    { label: 'Campaigns', value: brandCamps.length, sub: 'All campaigns', highlight: true },
+                    { label: 'Pending Review', value: brandCamps.filter(c => c.status === 'pending').length, sub: 'Awaiting approval' },
                   ].map((s, i) => (
                     <div key={i} className={`ad-stat-card ${s.highlight ? 'highlight' : ''}`}>
                       <div className="ad-stat-value">{s.value}</div>
@@ -820,7 +835,7 @@ export default function AdvertiserDashboard() {
                   </div>
                   <div className="ad-table-wrap">
                     <div className="ad-status-tabs">
-                      {['all','pending','live','ended','rejected'].map(s => (
+                      {['all','draft','pending','live','ended','rejected'].map(s => (
                         <button
                           key={s}
                           className={`ad-status-tab ${brandStatusFilter === s ? 'active' : ''}`}
@@ -836,7 +851,7 @@ export default function AdvertiserDashboard() {
                     <table className="ad-table">
                       <thead>
                         <tr>
-                          <th>Campaign</th><th>Status</th><th>Budget</th><th>Spent</th><th>Tier</th><th>Duration</th><th>Streamers</th>
+                          <th>Campaign</th><th>Status</th><th>Est. Cost</th><th>Tier</th><th>Duration</th><th>Exclusive</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -844,24 +859,16 @@ export default function AdvertiserDashboard() {
                           .filter(c => brandStatusFilter === 'all' || c.status === brandStatusFilter)
                           .map(c => (
                             <tr key={c.id} className="ad-table-row" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
-                              <td><span className="ad-table-name">{c.name}</span><span className="ad-table-id">{c.id}</span></td>
+                              <td><span className="ad-table-name">{c.campaign_name}</span><span className="ad-table-id">{c.campaign_id}</span></td>
                               <td><StatusBadge status={c.status} /></td>
-                              <td>{c.budgetMax ? `₹${c.budgetMax.toLocaleString('en-IN')}` : c.spend ? `₹${(c.spend * 1.4).toLocaleString('en-IN')}` : '—'}</td>
-                              <td>
-                                <div className="ad-spend-cell">
-                                  <span>{c.spend ? `₹${c.spend.toLocaleString('en-IN')}` : '—'}</span>
-                                  {c.budgetMax && c.spend > 0 && (
-                                    <div className="ad-mini-bar-track"><div className="ad-mini-bar-fill" style={{ width: `${Math.min((c.spend / c.budgetMax) * 100, 100)}%` }}/></div>
-                                  )}
-                                </div>
-                              </td>
+                              <td>{c.estimated_cost_rupees ? `₹${parseFloat(c.estimated_cost_rupees).toLocaleString('en-IN')}` : '—'}</td>
                               <td>{c.tier ? <TierBadge tier={c.tier} /> : '—'}</td>
-                              <td className="ad-muted">{c.daysLive ? `${c.daysLive}d` : '—'}</td>
-                              <td>{c.streamers || '—'}</td>
+                              <td className="ad-muted">{c.campaign_duration_days ? `${c.campaign_duration_days}d` : '—'}</td>
+                              <td>{c.exclusive ? '✓ Exclusive' : '—'}</td>
                             </tr>
                           ))}
                         {brandCamps.filter(c => brandStatusFilter === 'all' || c.status === brandStatusFilter).length === 0 && (
-                          <tr><td colSpan={7} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No {brandStatusFilter} campaigns.</td></tr>
+                          <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No {brandStatusFilter} campaigns.</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -929,6 +936,7 @@ export default function AdvertiserDashboard() {
                       } else {
                         setSelectedBrand(brand.id); 
                         setBrandStatusFilter('all'); 
+                        fetchBrandCampaigns(brand.id);
                         setRefresh(r => r + 1)
                       }
                     }}
@@ -1096,7 +1104,7 @@ export default function AdvertiserDashboard() {
                 <div className="ad-table-wrap">
                   {/* Status filter tabs */}
                   <div className="ad-status-tabs">
-                    {['all','pending','live','ended','rejected'].map(s => (
+                    {['all','draft','pending','live','ended','rejected'].map(s => (
                       <button
                         key={s}
                         className={`ad-status-tab ${brandStatusFilter === s ? 'active' : ''}`}
@@ -1117,11 +1125,10 @@ export default function AdvertiserDashboard() {
                       <tr>
                         <th>Campaign</th>
                         <th>Status</th>
-                        <th>Budget allocated</th>
-                        <th>Spent</th>
+                        <th>Est. Cost</th>
                         <th>Tier</th>
                         <th>Duration</th>
-                        <th>Streamers</th>
+                        <th>Exclusive</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1130,34 +1137,23 @@ export default function AdvertiserDashboard() {
                         .map(c => (
                           <tr key={c.id} className="ad-table-row" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
                             <td>
-                              <span className="ad-table-name">{c.name}</span>
-                              <span className="ad-table-id">{c.id}</span>
+                              <span className="ad-table-name">{c.campaign_name}</span>
+                              <span className="ad-table-id">{c.campaign_id}</span>
                             </td>
                             <td><StatusBadge status={c.status} /></td>
                             <td>
-                              {c.budgetMax
-                                ? `₹${c.budgetMax.toLocaleString('en-IN')}`
-                                : c.spend ? `₹${(c.spend * 1.4).toLocaleString('en-IN')}` : '—'}
-                            </td>
-                            <td>
-                              <div className="ad-spend-cell">
-                                <span>{c.spend ? `₹${c.spend.toLocaleString('en-IN')}` : '—'}</span>
-                                {c.budgetMax && c.spend > 0 && (
-                                  <div className="ad-mini-bar-track">
-                                    <div className="ad-mini-bar-fill"
-                                      style={{ width: `${Math.min((c.spend / c.budgetMax) * 100, 100)}%` }}/>
-                                  </div>
-                                )}
-                              </div>
+                              {c.estimated_cost_rupees
+                                ? `₹${parseFloat(c.estimated_cost_rupees).toLocaleString('en-IN')}`
+                                : '—'}
                             </td>
                             <td>{c.tier ? <TierBadge tier={c.tier} /> : '—'}</td>
-                            <td className="ad-muted">{c.daysLive ? `${c.daysLive}d` : '—'}</td>
-                            <td>{c.streamers || '—'}</td>
+                            <td className="ad-muted">{c.campaign_duration_days ? `${c.campaign_duration_days}d` : '—'}</td>
+                            <td>{c.exclusive ? '✓ Exclusive' : '—'}</td>
                           </tr>
                         ))}
                       {brandCampaigns.filter(c => brandStatusFilter === 'all' || c.status === brandStatusFilter).length === 0 && (
                         <tr>
-                          <td colSpan={7} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>
+                          <td colSpan={6} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>
                             No {brandStatusFilter} campaigns.
                           </td>
                         </tr>
