@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import './AdvertiserDashboard.css'
 
 const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
+const BILLING_TOKEN = import.meta.env.VITE_BILLING_TOPUP_TOKEN || 'test_token_123'
 
 /* ── DEV MODE ── */
 const DEV_MODE = true
@@ -490,7 +491,8 @@ export default function AdvertiserDashboard() {
   }
 
   const handleAllocateBudget = async (brandId, amount) => {
-    setIsBrandLoading(true)
+    const idempotencyKey = `allocate_${brandId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
     try {
       // Find the current brand to get its existing allocated budget
       const currentBrand = brandsList.find(b => b.id === brandId)
@@ -499,7 +501,11 @@ export default function AdvertiserDashboard() {
 
       const res = await fetch(`${ADV_BASE}/api/accounts/${id}/billing/brands/${brandId}/allocate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Billing-Token': BILLING_TOKEN,
+          'Idempotency-Key': idempotencyKey
+        },
         credentials: 'include',
         body: JSON.stringify({
           amount_rupees: amount.toString()
@@ -584,7 +590,6 @@ export default function AdvertiserDashboard() {
   const handleTopup = async (amount) => {
     setIsTopupLoading(true)
     const idempotencyKey = `topup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    const billingToken = import.meta.env.VITE_BILLING_TOPUP_TOKEN
 
     try {
       const res = await fetch(`${ADV_BASE}/api/accounts/${id}/billing/wallet/topup`, {
@@ -592,7 +597,7 @@ export default function AdvertiserDashboard() {
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': idempotencyKey,
-          'X-Billing-Token': billingToken
+          'X-Billing-Token': BILLING_TOKEN
         },
         credentials: 'include',
         body: JSON.stringify({
