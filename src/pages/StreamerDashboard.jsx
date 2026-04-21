@@ -214,11 +214,16 @@ export default function StreamerDashboard() {
       if (!data) return
       const u = data.user || data
       setUser(u)
-      setOverlayLink(`${window.location.origin}/overlay?id=${u.id || u.uid}`)
+      
+      // Use id from user object
+      const userId = u.id || u.uid
+      setOverlayLink(`${window.location.origin}/overlay?id=${userId}`)
       
       // Load preferences if available
       if (data.preferences) {
         const p = data.preferences
+        
+        // Handle preferred positions
         if (p.preferred_positions) {
           try {
             const pos = typeof p.preferred_positions === 'string' 
@@ -227,6 +232,8 @@ export default function StreamerDashboard() {
             if (Array.isArray(pos)) setSelectedPositions(pos)
           } catch (e) { console.error('Error parsing positions', e) }
         }
+        
+        // Handle restricted positions
         if (p.restricted_positions) {
           try {
             const rpos = typeof p.restricted_positions === 'string'
@@ -235,6 +242,8 @@ export default function StreamerDashboard() {
             if (Array.isArray(rpos)) setRestrictedPositions(rpos)
           } catch (e) { console.error('Error parsing restricted positions', e) }
         }
+        
+        // Handle other preferences
         if (p.gap_seconds !== undefined && p.gap_seconds !== null) setGapInput(p.gap_seconds)
         if (p.ads_enabled !== undefined && p.ads_enabled !== null) setAdsEnabledState(p.ads_enabled)
         if (p.live_stream_url) setStreamLink(p.live_stream_url)
@@ -242,9 +251,9 @@ export default function StreamerDashboard() {
       
       // Load playlist if available
       if (data.playlist) {
-        const list = data.playlist.items || data.playlist
+        const list = data.playlist.campaign_ids || data.playlist.items || (Array.isArray(data.playlist) ? data.playlist : null)
         if (Array.isArray(list) && list.length > 0) {
-          setPlaylist(list)
+          if (typeof list[0] === 'object') setPlaylist(list)
         }
       }
       
@@ -261,9 +270,14 @@ export default function StreamerDashboard() {
       }
       getStreamerMe().then(u => {
         if (!u) { navigate('/login/streamer'); return }
-        fetchStreamerUser(u.id || u.uid).then(full => {
-          processUserData(full || u)
-        })
+        const userId = u.id || u.uid || (u.user && (u.user.id || u.user.uid)) || id
+        if (userId && userId !== 'undefined') {
+          fetchStreamerUser(userId).then(full => {
+            processUserData(full || u)
+          })
+        } else {
+          processUserData(u)
+        }
       })
     }
   }, [navigate])
@@ -488,10 +502,16 @@ export default function StreamerDashboard() {
             </svg>
           </button>
           <div className="sd-topnav-user">
-            <div className="sd-user-avatar">{user?.name?.[0]}</div>
+            <div className="sd-user-avatar">
+              {user?.picture ? (
+                <img src={user.picture} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+              ) : (
+                user?.name?.[0]
+              )}
+            </div>
             <div className="sd-user-info">
               <span className="sd-user-name">{user?.name}</span>
-              <span className="sd-user-sub">{user?.channel || user?.email}</span>
+              <span className="sd-user-sub">{user?.channel_title || user?.channel || user?.email}</span>
             </div>
           </div>
         </div>
@@ -559,7 +579,7 @@ export default function StreamerDashboard() {
                   <div className="sd-tier-desc">Rate multiplier <strong style={{ color: tierMeta.color }}>{tierMeta.rate}</strong></div>
                   <div className="sd-tier-channel">
                     <span className="sd-tier-channel-label">Channel</span>
-                    <span className="sd-tier-channel-val">{user?.channel || 'Not connected'}</span>
+                    <span className="sd-tier-channel-val">{user?.channel_title || user?.channel || 'Not connected'}</span>
                   </div>
                   <div className="sd-tier-channel">
                     <span className="sd-tier-channel-label">Avg viewers</span>

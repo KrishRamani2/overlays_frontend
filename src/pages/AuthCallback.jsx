@@ -11,13 +11,16 @@ export default function AuthCallback() {
       const data = await fetchStreamerCallback(location.search)
       if (data) {
         // Successfully got user data
-        const userId = data.id || (data.user && data.user.id) || data.uid
+        const userId = data.id || (data.user && (data.user.id || data.user.uid)) || data.uid
         
         // Fetch extended user data (preferences, playlist, etc)
-        const fullUserData = await fetchStreamerUser(userId)
-        
-        // Store user data in localStorage
-        localStorage.setItem('streamer_user', JSON.stringify(fullUserData || data))
+        if (userId && userId !== 'undefined') {
+          const fullUserData = await fetchStreamerUser(userId)
+          // Store user data in localStorage
+          localStorage.setItem('streamer_user', JSON.stringify(fullUserData || data))
+        } else {
+          localStorage.setItem('streamer_user', JSON.stringify(data))
+        }
         
         navigate(`/streamer-dashboard/${userId}`, { replace: true })
       } else {
