@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { getMe, logout, apiFetch } from '../api/auth'
+import { getStreamerMe, logout, apiFetch, fetchStreamerUser } from '../api/auth'
+import { useParams, useNavigate } from 'react-router-dom'
 import './StreamerDashboard.css'
 
-const DEV_MODE = true
+const DEV_MODE = false
 
 /* ── Logo ── */
 const LogoIcon = () => (
@@ -159,6 +159,7 @@ const NAV_ITEMS = [
    MAIN COMPONENT
 ══════════════════════════════════════════ */
 export default function StreamerDashboard() {
+  const { id } = useParams()
   const navigate = useNavigate()
   const [user,               setUser]               = useState(null)
   const [loading,            setLoading]             = useState(true)
@@ -209,20 +210,63 @@ export default function StreamerDashboard() {
 
   /* ── Auth + data load ── */
   useEffect(() => {
-    if (DEV_MODE) {
-      const u = DUMMY_USER
+    const processUserData = (data) => {
+      if (!data) return
+      const u = data.user || data
       setUser(u)
-      setOverlayLink(`${window.location.origin}/overlay?id=${u.uid}`)
+      setOverlayLink(`${window.location.origin}/overlay?id=${u.id || u.uid}`)
+      
+      // Load preferences if available
+      if (data.preferences) {
+        const p = data.preferences
+        if (p.preferred_positions) {
+          try {
+            const pos = typeof p.preferred_positions === 'string' 
+              ? JSON.parse(p.preferred_positions) 
+              : p.preferred_positions
+            if (Array.isArray(pos)) setSelectedPositions(pos)
+          } catch (e) { console.error('Error parsing positions', e) }
+        }
+        if (p.restricted_positions) {
+          try {
+            const rpos = typeof p.restricted_positions === 'string'
+              ? JSON.parse(p.restricted_positions)
+              : p.restricted_positions
+            if (Array.isArray(rpos)) setRestrictedPositions(rpos)
+          } catch (e) { console.error('Error parsing restricted positions', e) }
+        }
+        if (p.gap_seconds !== undefined && p.gap_seconds !== null) setGapInput(p.gap_seconds)
+        if (p.ads_enabled !== undefined && p.ads_enabled !== null) setAdsEnabledState(p.ads_enabled)
+        if (p.live_stream_url) setStreamLink(p.live_stream_url)
+      }
+      
+      // Load playlist if available
+      if (data.playlist) {
+        const list = data.playlist.items || data.playlist
+        if (Array.isArray(list) && list.length > 0) {
+          setPlaylist(list)
+        }
+      }
+      
       setLoading(false)
-      return
     }
-    getMe().then(u => {
-      if (!u) { navigate('/login/streamer'); return }
-      setUser(u)
-      setOverlayLink(`${window.location.origin}/overlay?id=${u.uid}`)
-      setLoading(false)
-    })
-  }, [])
+
+    const storedUser = localStorage.getItem('streamer_user')
+    if (storedUser) {
+      processUserData(JSON.parse(storedUser))
+    } else {
+      if (DEV_MODE) {
+        processUserData(DUMMY_USER)
+        return
+      }
+      getStreamerMe().then(u => {
+        if (!u) { navigate('/login/streamer'); return }
+        fetchStreamerUser(u.id || u.uid).then(full => {
+          processUserData(full || u)
+        })
+      })
+    }
+  }, [navigate])
 
   /* ── Keep refs in sync ── */
   useEffect(() => { playlistRef.current = playlist }, [playlist])
@@ -374,7 +418,10 @@ export default function StreamerDashboard() {
     setIsEditMode(false)
   }
 
-  const handleLogout = () => { if (DEV_MODE) navigate('/'); else logout() }
+  const handleLogout = () => { 
+    localStorage.removeItem('streamer_user')
+    if (DEV_MODE) navigate('/'); else logout() 
+  }
 
   const startStream = () => {
     setIsStreaming(true)
@@ -444,7 +491,7 @@ export default function StreamerDashboard() {
             <div className="sd-user-avatar">{user?.name?.[0]}</div>
             <div className="sd-user-info">
               <span className="sd-user-name">{user?.name}</span>
-              <span className="sd-user-sub">{user?.channel}</span>
+              <span className="sd-user-sub">{user?.channel || user?.email}</span>
             </div>
           </div>
         </div>
@@ -506,21 +553,21 @@ export default function StreamerDashboard() {
               <div className="sd-overview-top">
                 <div className="sd-tier-card" style={{ borderColor: tierMeta.border, background: tierMeta.bg }}>
                   <div className="sd-tier-badge-wrap">
-                    <span className="sd-tier-name" style={{ color: tierMeta.color }}>{user?.tier}</span>
+                    <span className="sd-tier-name" style={{ color: tierMeta.color }}>{user?.tier || 'Tier 3'}</span>
                     <span className="sd-tier-viewers" style={{ color: tierMeta.color }}>{tierMeta.viewers} avg viewers</span>
                   </div>
                   <div className="sd-tier-desc">Rate multiplier <strong style={{ color: tierMeta.color }}>{tierMeta.rate}</strong></div>
                   <div className="sd-tier-channel">
                     <span className="sd-tier-channel-label">Channel</span>
-                    <span className="sd-tier-channel-val">{user?.channel}</span>
+                    <span className="sd-tier-channel-val">{user?.channel || 'Not connected'}</span>
                   </div>
                   <div className="sd-tier-channel">
                     <span className="sd-tier-channel-label">Avg viewers</span>
-                    <span className="sd-tier-channel-val">{user?.avgViewers?.toLocaleString()}</span>
+                    <span className="sd-tier-channel-val">{user?.avgViewers?.toLocaleString() || '0'}</span>
                   </div>
                   <div className="sd-tier-channel">
                     <span className="sd-tier-channel-label">Member since</span>
-                    <span className="sd-tier-channel-val">{user?.joinedDate}</span>
+                    <span className="sd-tier-channel-val">{user?.joinedDate || 'Just joined'}</span>
                   </div>
                 </div>
 
@@ -800,16 +847,16 @@ export default function StreamerDashboard() {
             <div className="sd-content">
               <div className="sd-page-header">
                 <div>
-                  <div className="sd-eyebrow">Incoming</div>
+                  <div className="sd-eyebrow">Requests</div>
                   <h1 className="sd-page-title">Brand <em>requests</em></h1>
                 </div>
               </div>
 
               <div className="sd-stats-row" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom:'1.25rem' }}>
                 {[
-                  { label: 'Pending requests', value: adRequests.length,   sub: 'Awaiting your decision', highlight: adRequests.length > 0 },
-                  { label: 'Approved',         value: playlist.length,     sub: 'In your playlist' },
-                  { label: 'Rejected',         value: rejectedAds.length,  sub: 'Declined' },
+                  { label: 'Pending requests', value: adRequests.length, sub: 'Need review', highlight: true },
+                  { label: 'Approval rate',      value: '92%', sub: 'Last 30 days' },
+                  { label: 'Avg budget',         value: '₹12,400', sub: 'Per campaign' },
                 ].map((s, i) => (
                   <div key={i} className={`sd-stat-card ${s.highlight ? 'highlight' : ''}`}>
                     <div className="sd-stat-value">{s.value}</div>

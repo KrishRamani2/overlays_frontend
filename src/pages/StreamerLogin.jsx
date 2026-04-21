@@ -60,16 +60,17 @@ export default function StreamerLogin() {
     const err = params.get('error')
     if (err) setError(ERROR_MESSAGES[err] || 'Sign-in failed. Please try again.')
 
-    getMe().then(user => {
-      if (user && user.role === 'streamer') {
-        const hasSetup = localStorage.getItem(`setup_done_${user.id}`)
-        navigate(hasSetup ? '/streamer-dashboard' : '/setup/profile', { replace: true })
-      } else if (user && user.role === 'advertiser') {
-        navigate(`/campaign-manager/${user.id || user._id || 'demo-id'}`, { replace: true })
-      } else {
-        setChecking(false)
-      }
-    })
+      getMe().then(user => {
+        if (user && user.role === 'streamer') {
+          const userId = user.id || user.uid
+          const hasSetup = localStorage.getItem(`setup_done_${userId}`)
+          navigate(hasSetup ? `/streamer-dashboard/${userId}` : '/setup/profile', { replace: true })
+        } else if (user && user.role === 'advertiser') {
+          navigate(`/campaign-manager/${user.id || user._id || 'demo-id'}`, { replace: true })
+        } else {
+          setChecking(false)
+        }
+      })
   }, [])
 
   if (checking) {
