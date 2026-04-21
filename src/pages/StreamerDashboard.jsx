@@ -146,13 +146,12 @@ function EarningsChart({ data }) {
    NAV ITEMS — Go Live moved before Brands & Requests
 ══════════════════════════════════════════ */
 const NAV_ITEMS = [
-  { id: 'overview',   label: 'Overview',    icon: '⊞' },
-  { id: 'stream',     label: 'Go Live',     icon: '●' },
-  { id: 'playlist',   label: 'Ad Playlist', icon: '◈' },
-  { id: 'requests',   label: 'Requests',    icon: '↓' },
-  { id: 'brands',     label: 'Brands',      icon: '◎' },
-  { id: 'earnings',   label: 'Earnings',    icon: '₹' },
-  { id: 'settings',   label: 'Settings',    icon: '⚙' },
+  { id: 'overview',   label: 'Overview',          icon: '⊞' },
+  { id: 'stream',     label: 'Go Live',           icon: '●' },
+  { id: 'playlist',   label: 'Ad Playlist',       icon: '◈' },
+  { id: 'brands',     label: 'Brands & Requests', icon: '◎' },
+  { id: 'earnings',   label: 'Earnings',          icon: '₹' },
+  { id: 'settings',   label: 'Settings',          icon: '⚙' },
 ]
 
 /* ══════════════════════════════════════════
@@ -530,7 +529,7 @@ export default function StreamerDashboard() {
               >
                 <span className={`sd-nav-icon ${item.id === 'stream' ? 'live-icon' : ''}`}>{item.icon}</span>
                 {sidebarOpen && <span className="sd-nav-label">{item.label}</span>}
-                {sidebarOpen && item.id === 'requests' && adRequests.length > 0 && (
+                {sidebarOpen && item.id === 'brands' && adRequests.length > 0 && (
                   <span className="sd-nav-badge">{adRequests.length}</span>
                 )}
                 {sidebarOpen && item.id === 'stream' && isStreaming && (
@@ -803,21 +802,23 @@ export default function StreamerDashboard() {
             </div>
           )}
 
-          {/* ── BRANDS ── */}
+          {/* ── BRANDS & REQUESTS (merged) ── */}
           {activePage === 'brands' && (
             <div className="sd-content">
               <div className="sd-page-header">
                 <div>
-                  <div className="sd-eyebrow">Brands</div>
-                  <h1 className="sd-page-title">Brands I've <em>worked with</em></h1>
+                  <div className="sd-eyebrow">Brands & Requests</div>
+                  <h1 className="sd-page-title">Brands & <em>requests</em></h1>
                 </div>
               </div>
 
-              <div className="sd-stats-row" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom:'1.25rem' }}>
+              {/* ── Brand stats ── */}
+              <div className="sd-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom:'1.25rem' }}>
                 {[
                   { label: 'Total earned from brands', value: DUMMY_EARNINGS.lifetime, sub: 'All time' },
                   { label: 'Active brand relationships', value: DUMMY_BRANDS.filter(b=>b.status==='active').length, sub: 'Currently running', highlight: true },
                   { label: 'Total streams with ads',   value: '84', sub: 'Across all brands' },
+                  { label: 'Pending requests',   value: adRequests.length, sub: 'Need review' },
                 ].map((s, i) => (
                   <div key={i} className={`sd-stat-card ${s.highlight ? 'highlight' : ''}`}>
                     <div className="sd-stat-value">{s.value}</div>
@@ -827,73 +828,79 @@ export default function StreamerDashboard() {
                 ))}
               </div>
 
-              <div className="sd-brands-grid">
-                {DUMMY_BRANDS.map(brand => (
-                  <div key={brand.id} className="sd-brand-card" style={{ '--brand-color': brand.color }}>
-                    <div className="sd-brand-card-top">
-                      <div className="sd-brand-logo" style={{ background: brand.color, color: 'white' }}>
-                        {brand.logo}
-                      </div>
-                      <div className="sd-brand-header-info">
-                        <span className="sd-brand-name">{brand.name}</span>
-                        <span className="sd-brand-category">{brand.category}</span>
-                      </div>
-                      <StatusBadge status={brand.status} />
-                    </div>
-                    <div className="sd-brand-earned">{brand.earned}</div>
-                    <div className="sd-brand-earned-label">total earned</div>
-                    <div className="sd-brand-stats">
-                      <div className="sd-brand-stat">
-                        <span className="sd-brand-stat-val">{brand.streams}</span>
-                        <span className="sd-brand-stat-key">streams</span>
-                      </div>
-                      <div className="sd-brand-stat-divider"/>
-                      <div className="sd-brand-stat">
-                        <span className="sd-brand-stat-val">{brand.lastStream}</span>
-                        <span className="sd-brand-stat-key">last stream</span>
-                      </div>
-                    </div>
-                    <div className="sd-brand-bar-track">
-                      <div className="sd-brand-bar-fill" style={{ background: brand.color, width: `${Math.min((parseInt(brand.earned.replace(/[^0-9]/g,'')) / 50000) * 100, 100)}%` }}/>
-                    </div>
+              {/* ── Brand cards ── */}
+              <div className="sd-card" style={{ marginBottom: '1.25rem' }}>
+                <div className="sd-card-header">
+                  <div>
+                    <div className="sd-eyebrow">Partners</div>
+                    <h2 className="sd-card-title">Brands I've <em>worked with</em></h2>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── AD REQUESTS ── */}
-          {activePage === 'requests' && (
-            <div className="sd-content">
-              <div className="sd-page-header">
-                <div>
-                  <div className="sd-eyebrow">Requests</div>
-                  <h1 className="sd-page-title">Brand <em>requests</em></h1>
+                  <span className="sd-earnings-chip">{DUMMY_BRANDS.filter(b=>b.status==='active').length} active</span>
+                </div>
+                <div className="sd-brands-grid">
+                  {DUMMY_BRANDS.map(brand => (
+                    <div key={brand.id} className="sd-brand-card" style={{ '--brand-color': brand.color }}>
+                      <div className="sd-brand-card-top">
+                        <div className="sd-brand-logo" style={{ background: brand.color, color: 'white' }}>
+                          {brand.logo}
+                        </div>
+                        <div className="sd-brand-header-info">
+                          <span className="sd-brand-name">{brand.name}</span>
+                          <span className="sd-brand-category">{brand.category}</span>
+                        </div>
+                        <StatusBadge status={brand.status} />
+                      </div>
+                      <div className="sd-brand-earned">{brand.earned}</div>
+                      <div className="sd-brand-earned-label">total earned</div>
+                      <div className="sd-brand-stats">
+                        <div className="sd-brand-stat">
+                          <span className="sd-brand-stat-val">{brand.streams}</span>
+                          <span className="sd-brand-stat-key">streams</span>
+                        </div>
+                        <div className="sd-brand-stat-divider"/>
+                        <div className="sd-brand-stat">
+                          <span className="sd-brand-stat-val">{brand.lastStream}</span>
+                          <span className="sd-brand-stat-key">last stream</span>
+                        </div>
+                      </div>
+                      <div className="sd-brand-bar-track">
+                        <div className="sd-brand-bar-fill" style={{ background: brand.color, width: `${Math.min((parseInt(brand.earned.replace(/[^0-9]/g,'')) / 50000) * 100, 100)}%` }}/>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="sd-stats-row" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom:'1.25rem' }}>
-                {[
-                  { label: 'Pending requests', value: adRequests.length, sub: 'Need review', highlight: true },
-                  { label: 'Approval rate',      value: '92%', sub: 'Last 30 days' },
-                  { label: 'Avg budget',         value: '₹12,400', sub: 'Per campaign' },
-                ].map((s, i) => (
-                  <div key={i} className={`sd-stat-card ${s.highlight ? 'highlight' : ''}`}>
-                    <div className="sd-stat-value">{s.value}</div>
-                    <div className="sd-stat-label">{s.label}</div>
-                    <div className="sd-stat-sub">{s.sub}</div>
-                  </div>
-                ))}
-              </div>
-
+              {/* ── Ad requests section ── */}
               {adRequests.length === 0
-                ? <div className="sd-card"><p className="sd-empty">No pending requests.</p></div>
+                ? (
+                  <div className="sd-card" style={{ marginBottom: '1.25rem' }}>
+                    <div className="sd-card-header">
+                      <div>
+                        <div className="sd-eyebrow">Incoming</div>
+                        <h2 className="sd-card-title">Ad <em>requests</em></h2>
+                      </div>
+                      <div className="sd-request-stats-inline">
+                        <span className="sd-days-badge green">92% approval rate</span>
+                        <span className="sd-days-badge blue">₹12,400 avg budget</span>
+                      </div>
+                    </div>
+                    <p className="sd-empty">No pending requests — you're all caught up! 🎉</p>
+                  </div>
+                )
                 : (
                   <div className="sd-card" style={{ marginBottom: '1.25rem' }}>
                     <div className="sd-card-header">
                       <div>
-                        <div className="sd-eyebrow">Pending</div>
-                        <h2 className="sd-card-title">New <em>requests</em></h2>
+                        <div className="sd-eyebrow">Incoming</div>
+                        <h2 className="sd-card-title">Ad <em>requests</em></h2>
+                      </div>
+                      <div className="sd-request-stats-inline">
+                        <span className="sd-days-badge green">92% approval rate</span>
+                        <span className="sd-days-badge blue">₹12,400 avg budget</span>
+                        {adRequests.length > 0 && (
+                          <span className="sd-nav-badge" style={{ fontSize: '0.65rem', padding: '0.15rem 0.55rem' }}>{adRequests.length} pending</span>
+                        )}
                       </div>
                     </div>
                     <div className="sd-request-list">
