@@ -314,6 +314,7 @@ export default function AdvertiserDashboard() {
           id: data.id || null,
           company_name: data.company_name || 'My Company',
           company_type: data.company_type || 'agency',
+          status: data.status || 'active',
           active: data.active !== false
         })
       } else {
@@ -398,21 +399,36 @@ export default function AdvertiserDashboard() {
   }
 
   const deleteAccount = async () => {
-    if (!window.confirm('Are you sure you want to permanently delete your account? This action cannot be undone.')) return;
+    if (!window.confirm('Are you sure you want to permanently delete your account? This action cannot be undone. Any remaining balance will be processed for refund.')) return;
     try {
-      const res = await fetch(`${ADV_BASE}/api/accounts/${id}`, {
-        method: 'DELETE',
-        credentials: 'include'
+      const closureData = {
+        company_google_user_id: id,
+        company_name: user.company_name,
+        company_type: user.company_type,
+        wallet_balance_cents_snapshot: wallet.balance_cents || 0,
+        wallet_balance_rupees: wallet.balance_rupees || '0.00',
+        status: 'pending',
+        reason: 'User requested account closure',
+        requested_at: new Date().toISOString()
+      };
+
+      const res = await fetch(`${ADV_BASE}/api/accounts/${id}/close-account/request-admin-approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(closureData)
       });
+
       if (res.ok) {
-        logoutAdvertiser()
-        navigate('/login/advertiser')
+        toast.success('Waiting for admin approval. Please log out.', { duration: 6000 });
+        setUser(prev => ({ ...prev, status: 'closure_requested' }));
       } else {
-        toast.error('Failed to delete account');
+        const err = await res.json().catch(() => ({}));
+        toast.error(`Failed to request closure: ${err.detail || 'Server error'}`);
       }
     } catch (err) {
       console.error(err);
-      toast.error('Failed to delete account');
+      toast.error('Failed to request account closure');
     }
   }
 
@@ -690,6 +706,27 @@ export default function AdvertiserDashboard() {
     const blob = new Blob([csv], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a'); a.href = url; a.download = 'billing.csv'; a.click()
+  }
+
+  if (user.status === 'closure_requested' || user.status === 'closing' || user.status === 'pending_closure') {
+    return (
+      <div className="ad-deactivated-overlay">
+        <div className="ad-deactivated-card closure-card">
+          <div className="ad-closure-icon">⏳</div>
+          <h1>Waiting for Admin Approval</h1>
+          <p>
+            Your request to close this account (<strong>{user.company_name}</strong>) is currently waiting for admin approval. 
+            All platform functions have been locked. <strong>Please log out.</strong>
+          </p>
+          <div className="ad-closure-details">
+            <span>Snapshot Balance: ₹{parseFloat(wallet.balance_rupees || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <button className="ad-deactivated-btn" onClick={handleLogout}>
+            Log Out
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (user.active === false) {

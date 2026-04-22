@@ -2,6 +2,67 @@ const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:1000/api/v1'
 const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
 const STREAMER_BASE = 'http://127.0.0.1:5000'
 
+/* ── Session persistence helpers (1-year expiry) ── */
+
+const SESSION_KEY = 'streamer_session'
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000
+
+/**
+ * Save streamer session to localStorage with a 1-year expiry.
+ * @param {object} data – user data (may include user, preferences, playlist)
+ */
+export function saveStreamerSession(data) {
+  const session = {
+    data,
+    expiresAt: Date.now() + ONE_YEAR_MS,
+  }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  // Also keep legacy keys for dashboard and quick-login
+  localStorage.setItem('streamer_user', JSON.stringify(data))
+  const u = data.user || data
+  const uid = u.id || u.uid
+  if (uid) localStorage.setItem('userId', uid)
+}
+
+/**
+ * Get the saved streamer session. Returns null if missing or expired.
+ */
+export function getStreamerSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+    const session = JSON.parse(raw)
+    if (!session.expiresAt || Date.now() > session.expiresAt) {
+      clearStreamerSession()
+      return null
+    }
+    return session.data
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Clear all streamer session data (used on logout).
+ */
+export function clearStreamerSession() {
+  localStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem('streamer_user')
+  localStorage.removeItem('userId')
+}
+
+/**
+ * Get the user ID from the saved session (if any).
+ */
+export function getSavedUserId() {
+  const session = getStreamerSession()
+  if (!session) return null
+  const u = session.user || session
+  return u.id || u.uid || null
+}
+
+/* ── API helpers ── */
+
 export async function apiFetch(path, options = {}) {
   try {
     const headers = {
@@ -55,10 +116,6 @@ export async function fetchStreamerCallback(search) {
       credentials: 'include'
     })
     if (!res.ok) return null
-    // If the backend returns a redirect, we might need to handle it or the browser handles it.
-    // But the user said "get this data ... you get all data like id and all"
-    // So we assume it returns JSON or we can get the data from it.
-    // If it redirects, we might need to follow it or call /auth/status after.
     const body = await res.json()
     return body.user || body
   } catch {
@@ -77,12 +134,15 @@ export async function getMe() {
   }
 }
 
-export async function getStreamerMe() {
+export async function getStreamerMe(userId = null) {
   try {
-    const res = await fetch(`${STREAMER_BASE}/auth/status`, { credentials: 'include' })
+    const url = userId 
+      ? `${STREAMER_BASE}/api/v1/auth/me?user_id=${userId}`
+      : `${STREAMER_BASE}/api/v1/auth/me`
+    const res = await fetch(url, { credentials: 'include' })
     if (!res.ok) return null
     const body = await res.json()
-    return body.user || body
+    return body
   } catch {
     return null
   }
@@ -99,11 +159,35 @@ export async function fetchStreamerUser(userId) {
   }
 }
 
-export async function logout() {
+/**
+ * Quick-login: re-authenticate a returning user by their ID
+ * without requiring Google OAuth. Works only if the user already
+ * exists in the backend database.
+ */
+export async function quickLogin(userId) {
   try {
-    await apiFetch('/auth/logout', { method: 'POST' })
-  } catch {}
-  window.location.href = '/'
+    const res = await fetch(`${STREAMER_BASE}/api/auth/quick-login/${userId}`, {
+      credentials: 'include',
+    })
+    if (!res.ok) return null
+    const body = await res.json()
+    if (body.authenticated) {
+      // Persist the refreshed session for another year
+      saveStreamerSession(body)
+      return body
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Logout — calls streamer backend to clear server session, then wipes local data.
+ */
+export async function logout() {
+  clearStreamerSession()
+  window.location.href = `${STREAMER_BASE}/auth/logout`
 }
 
 export async function getAdvertiserMe(userId) {

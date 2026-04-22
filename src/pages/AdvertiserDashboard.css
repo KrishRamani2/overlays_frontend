@@ -701,6 +701,33 @@
   background: #000; transform: translateY(-2px);
 }
 
+.closure-card {
+  border-top: 5px solid #F59E0B;
+}
+
+.ad-closure-icon {
+  font-size: 4rem;
+  margin-bottom: 1.5rem;
+  animation: ad-pulse 2s infinite ease-in-out;
+}
+
+@keyframes ad-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.ad-closure-details {
+  background: #FFFBEB;
+  border: 1px solid #FEF3C7;
+  padding: 1rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+  font-size: 0.9rem;
+  color: #B45309;
+  font-weight: 500;
+}
+
 /* ── WALLET SPECIFIC ── */
 .ad-wallet-btn {
   width: auto !important;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { getMe, loginWithGoogle, loginWithGoogleAdvertiser } from '../api/auth'
+import { getMe, getStreamerMe, loginWithGoogle, loginWithGoogleAdvertiser, getStreamerSession, quickLogin, getSavedUserId } from '../api/auth'
 import './StreamerLogin.css'
 
 const LogoIcon = () => (
@@ -54,29 +54,96 @@ export default function StreamerLogin() {
   const [checking, setChecking] = useState(true)
   const [error,    setError]    = useState('')
   const [hovered,  setHovered]  = useState(null) // 'streamer' | 'brand' | null
+  const [autoLogging, setAutoLogging] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const err = params.get('error')
     if (err) setError(ERROR_MESSAGES[err] || 'Sign-in failed. Please try again.')
 
-      getMe().then(user => {
-        if (user && user.role === 'streamer') {
-          const userId = user.id || user.uid
-          const hasSetup = localStorage.getItem(`setup_done_${userId}`)
-          navigate(hasSetup ? `/streamer-dashboard/${userId}` : '/setup/profile', { replace: true })
-        } else if (user && user.role === 'advertiser') {
-          navigate(`/campaign-manager/${user.id || user._id || 'demo-id'}`, { replace: true })
-        } else {
-          setChecking(false)
+    const tryAutoLogin = async () => {
+      // 1. Check if we have a valid saved session (1-year persistent)
+      const savedId = getSavedUserId()
+      if (savedId) {
+        setAutoLogging(true)
+        try {
+          // Try quick-login against backend (verifies user still exists in DB)
+          const result = await quickLogin(savedId)
+          if (result && result.authenticated) {
+            navigate(`/streamer-dashboard/${savedId}`, { replace: true })
+            return
+          }
+        } catch (e) {
+          console.error('Quick login failed:', e)
         }
-      })
-  }, [])
+        setAutoLogging(false)
+      }
 
-  if (checking) {
+      // 2. Legacy check: try /auth/status for streamers or /auth/me for advertisers
+      try {
+        const [streamerUser, advertiserUser] = await Promise.all([
+          getStreamerMe().catch(() => null),
+          getMe().catch(() => null)
+        ])
+
+        if (streamerUser && streamerUser.authenticated) {
+          const user = streamerUser.user
+          const userId = user.id || user.uid
+          navigate(`/streamer-dashboard/${userId}`, { replace: true })
+          return
+        }
+
+        if (advertiserUser && (advertiserUser.role === 'advertiser' || advertiserUser.authenticated)) {
+          const user = advertiserUser.user || advertiserUser
+          const userId = user.id || user._id || 'demo-id'
+          navigate(`/campaign-manager/${userId}`, { replace: true })
+          return
+        }
+      } catch (e) {
+        console.error('Auth status check failed:', e)
+      }
+
+      setChecking(false)
+    }
+
+    tryAutoLogin()
+  }, [navigate, location.search])
+
+  const handleStreamerLogin = async () => {
+    // If we have a saved ID, try to log in directly first
+    const savedId = getSavedUserId()
+    if (savedId) {
+      setAutoLogging(true)
+      try {
+        const result = await quickLogin(savedId)
+        if (result && result.authenticated) {
+          navigate(`/streamer-dashboard/${savedId}`, { replace: true })
+          return
+        }
+      } catch (e) {
+        console.error('Direct login attempt failed:', e)
+      }
+      setAutoLogging(false)
+    }
+    
+    // If no saved ID or quick login failed, proceed to Google OAuth
+    loginWithGoogle('streamer')
+  }
+
+  const handleBrandLogin = async () => {
+    // Brand login currently uses the standard redirect
+    loginWithGoogleAdvertiser()
+  }
+
+  if (checking || autoLogging) {
     return (
       <div className="sl-loading">
         <div className="sl-spinner-lg"></div>
+        {(autoLogging || checking) && (
+          <p style={{ color: '#94a3b8', marginTop: '16px', fontFamily: 'Inter, system-ui, sans-serif' }}>
+            {autoLogging ? 'Signing you back in...' : 'Checking session...'}
+          </p>
+        )}
       </div>
     )
   }
@@ -120,7 +187,7 @@ export default function StreamerLogin() {
           <p className="sl-role-desc">
             Manage your dashboard, customize overlays, and grow your audience with powerful tools.
           </p>
-          <button className="sl-google-btn" onClick={() => loginWithGoogle('streamer')}>
+          <button className="sl-google-btn" onClick={handleStreamerLogin}>
             <GoogleIcon />
             Continue with Google
           </button>
@@ -139,7 +206,7 @@ export default function StreamerLogin() {
           <p className="sl-role-desc">
             Launch campaigns, target streamers, and track real-time performance analytics.
           </p>
-          <button className="sl-google-btn" onClick={() => loginWithGoogleAdvertiser()}>
+          <button className="sl-google-btn" onClick={handleBrandLogin}>
             <GoogleIcon />
             Continue with Google
           </button>

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { fetchStreamerCallback, fetchStreamerUser } from '../api/auth'
+import { fetchStreamerCallback, fetchStreamerUser, saveStreamerSession } from '../api/auth'
 
 export default function AuthCallback() {
   const navigate = useNavigate()
@@ -14,14 +14,15 @@ export default function AuthCallback() {
         const userId = data.id || (data.user && (data.user.id || data.user.uid)) || data.uid
         
         // Fetch extended user data (preferences, playlist, etc)
+        let fullData = data
         if (userId && userId !== 'undefined') {
           const fullUserData = await fetchStreamerUser(userId)
-          // Store user data in localStorage
-          localStorage.setItem('streamer_user', JSON.stringify(fullUserData || data))
-        } else {
-          localStorage.setItem('streamer_user', JSON.stringify(data))
+          fullData = fullUserData || data
         }
-        
+
+        // Persist session with 1-year expiry
+        saveStreamerSession(fullData)
+
         navigate(`/streamer-dashboard/${userId}`, { replace: true })
       } else {
         // Failed to get user data
