@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
-import { getAllBrandsWithStats, getBillingTransactions } from '../assets/overlaysStore'
+import { getAllBrandsWithStats } from '../assets/overlaysStore'
 import DownloadReportModal from './DownloadReportModal'
 import { getAdvertiserMe, logoutAdvertiser } from '../api/auth'
 import toast from 'react-hot-toast'
@@ -660,6 +660,8 @@ export default function AdvertiserDashboard() {
     // Count campaigns for this brand from allCampaigns
     const brandCamps = allCampaigns.filter(c => c.brand_id === b.id)
     const campaignCount = brandCamps.length
+    const liveStreams = brandCamps.filter(c => c.status === 'live' || c.status === 'approved').length
+
     return {
       id: b.id,
       name: b.brand_name,
@@ -674,7 +676,7 @@ export default function AdvertiserDashboard() {
       totalSpend: `\u20b9${spent.toLocaleString()}`,
       spendRaw: spent,
       campaigns: campaignCount,
-      streams: 0,
+      streams: liveStreams,
     }
   })
 
@@ -689,7 +691,34 @@ export default function AdvertiserDashboard() {
   const brandCampaigns = selectedBrand ? (brandCampaignsData[selectedBrand] || []) : []
 
   /* Billing filters */
-  const BILLING_TRANSACTIONS = getBillingTransactions()
+  /* Billing transactions derived from campaigns */
+  const BILLING_TRANSACTIONS = useMemo(() => {
+    return allCampaigns.map(c => {
+      const brandObj = brandsList.find(b => b.id === c.brand_id);
+      
+      // Status logic: 
+      // - If campaign status is 'ended' -> ended
+      // - If approval is pending (pending/draft) -> pending
+      // - Otherwise (live/approved) -> live
+      let displayStatus = 'live';
+      if (c.status === 'ended') displayStatus = 'ended';
+      else if (c.status === 'pending' || c.status === 'draft') displayStatus = 'pending';
+      else if (c.status === 'approved' || c.status === 'live') displayStatus = 'live';
+
+      const dateObj = new Date(c.created_at || Date.now());
+      return {
+        id: c.id,
+        brand: brandObj ? brandObj.brand_name : 'Unknown Brand',
+        brandId: c.brand_id,
+        campaign: c.campaign_name,
+        tier: c.tier || 'Tier 1',
+        amount: parseFloat(c.estimated_cost_rupees || 0),
+        date: dateObj.toLocaleDateString('en-IN'),
+        time: dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        status: displayStatus
+      };
+    });
+  }, [allCampaigns, brandsList]);
   const filteredBilling = BILLING_TRANSACTIONS.filter(t => {
     const tierOk  = billingFilters.tier  === 'All' || t.tier  === billingFilters.tier
     const brandOk = billingFilters.brand === 'All' || t.brand === billingFilters.brand
@@ -1192,7 +1221,7 @@ export default function AdvertiserDashboard() {
                         <span className="ad-status-tab-count">
                           {s === 'all'
                             ? brandCampaigns.length
-                            : brandCampaigns.filter(c => c.status === s).length}
+                            : brandCampaigns.filter(c => c.status === s || (s === 'live' && c.status === 'approved')).length}
                         </span>
                       </button>
                     ))}
@@ -1211,7 +1240,7 @@ export default function AdvertiserDashboard() {
                     </thead>
                     <tbody>
                       {brandCampaigns
-                        .filter(c => brandStatusFilter === 'all' || c.status === brandStatusFilter)
+                        .filter(c => brandStatusFilter === 'all' || c.status === brandStatusFilter || (brandStatusFilter === 'live' && c.status === 'approved'))
                         .map(c => (
                           <tr key={c.id} className="ad-table-row" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
                             <td>
@@ -1402,7 +1431,10 @@ export default function AdvertiserDashboard() {
                           </td>
                           <td><span className="ad-table-name">{t.campaign}</span></td>
                           <td><TierBadge tier={t.tier} /></td>
-                          <td className="ad-muted">{t.date}</td>
+                          <td className="ad-muted">
+                            {t.date}
+                            <span style={{ fontSize: '0.68rem', display: 'block', opacity: 0.7 }}>{t.time}</span>
+                          </td>
                           <td><strong>₹{t.amount.toLocaleString()}</strong></td>
                           <td><StatusBadge status={t.status} /></td>
                         </tr>
