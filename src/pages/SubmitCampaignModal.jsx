@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
 
 const TIER_INFO = [
+  { id: 'Auto',   label: 'Auto',   desc: 'Smart mix · all tiers · max reach',  cpm: 55,  avgViewers: 40000 },
   { id: 'Tier 1', label: 'Tier 1', desc: 'Top creators · 100K+ avg viewers',   cpm: 120, avgViewers: 150000 },
   { id: 'Tier 2', label: 'Tier 2', desc: 'Rising stars · 20K–100K viewers',    cpm: 75,  avgViewers: 50000 },
   { id: 'Tier 3', label: 'Tier 3', desc: 'Mid-tier · 5K–20K viewers',          cpm: 45,  avgViewers: 12000 },
@@ -51,7 +52,7 @@ function formatINR(amount) {
 }
 
 export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, onConfirm, onClose }) {
-  const [tier,        setTier]        = useState('Tier 3')
+  const [tier,        setTier]        = useState('Auto')
   const [exclusive,   setExclusive]   = useState(false)
   const [durationOpt, setDurationOpt] = useState(7)
   const [customDays,  setCustomDays]  = useState(14)
@@ -265,12 +266,12 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
             {TIER_INFO.map(t => (
               <button
                 key={t.id}
-                className={`scm-tier-card ${tier === t.id ? 'active' : ''}`}
+                className={`scm-tier-card ${tier === t.id ? 'active' : ''} ${t.id === 'Auto' ? 'scm-tier-auto' : ''}`}
                 onClick={() => setTier(t.id)}
               >
                 <span className="scm-tier-label">{t.label}</span>
                 <span className="scm-tier-desc">{t.desc}</span>
-                <span className="scm-tier-cpm">₹{t.cpm} CPM</span>
+                <span className="scm-tier-cpm">{t.id === 'Auto' ? `~₹${t.cpm} avg CPM` : `₹${t.cpm} CPM`}</span>
               </button>
             ))}
           </div>
@@ -454,6 +455,25 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
           )}
         </div>
 
+        {/* Ad Count Summary */}
+        <div className="scm-ad-count-bar">
+          <div className="scm-ad-count-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M3 9h18"/><path d="M9 21V9"/>
+            </svg>
+          </div>
+          <div className="scm-ad-count-info">
+            <span className="scm-ad-count-num">{ads.length}</span>
+            <span className="scm-ad-count-text">ad variation{ads.length !== 1 ? 's' : ''} in this campaign</span>
+          </div>
+          <div className="scm-ad-count-chips">
+            {ads.map((ad, i) => (
+              <span key={i} className="scm-ad-count-chip">{ad.visibleName || ad.name || `Ad ${i+1}`}</span>
+            ))}
+          </div>
+        </div>
+
         {/* Actions */}
         <div className="scm-actions">
           <button className="scm-btn-ghost" onClick={onClose}>Cancel</button>
@@ -463,7 +483,7 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
             disabled={budgetExceeded}
             title={budgetExceeded ? 'Cannot submit: estimated cost exceeds brand budget' : ''}
           >
-            {budgetExceeded ? 'Budget exceeded' : `Submit ${ads.length} variant${ads.length !== 1 ? 's' : ''} for review →`}
+            {budgetExceeded ? 'Budget exceeded' : `Submit ${ads.length} ad${ads.length !== 1 ? 's' : ''} for review →`}
           </button>
         </div>
 

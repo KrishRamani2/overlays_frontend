@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import SubmitCampaignModal from './SubmitCampaignModal'
 import toast from 'react-hot-toast'
 import './SubmitCampaignModal.css'
-import { logout, getMe } from '../api/auth'
+import { logoutAdvertiser, getMe } from '../api/auth'
 import './CampaignManager.css'
 
 const LogoIcon = () => (
@@ -227,7 +227,42 @@ export default function CampaignManager() {
     }
 
     const b = getGridBounds(next)
-    updateAd({ gridSelection:next, layout:{ ...currentAd.layout, banner:{...currentAd.layout.banner,...b} } })
+    
+    // Auto-clamp image if it's now outside new grid bounds
+    let newImg = { ...currentAd.layout.img }
+    let changed = false
+    
+    if (newImg.w > b.w) {
+      const scale = b.w / newImg.w
+      newImg.w = b.w
+      newImg.h = newImg.h * scale
+      changed = true
+    }
+    if (newImg.h > b.h) {
+      const scale = b.h / newImg.h
+      newImg.h = b.h
+      newImg.w = newImg.w * scale
+      changed = true
+    }
+    
+    // Also clamp position relative to the new banner
+    const maxX = Math.max(0, b.w - newImg.w)
+    const maxY = Math.max(0, b.h - newImg.h)
+    if (newImg.x > maxX) { newImg.x = maxX; changed = true }
+    if (newImg.y > maxY) { newImg.y = maxY; changed = true }
+    
+    if (changed) {
+      toast('Image adjusted to fit new grid size', { icon: 'ℹ️' })
+    }
+
+    updateAd({ 
+      gridSelection: next, 
+      layout: { 
+        ...currentAd.layout, 
+        banner: { ...currentAd.layout.banner, ...b },
+        img: newImg
+      } 
+    })
   }
 
   /* ── Ad variation management ── */
@@ -553,10 +588,28 @@ export default function CampaignManager() {
 
     const toastId = toast.loading("Uploading image...");
     const url = await uploadToCloudinary(file);
+
+    // Helper to auto-fit image within current grid boundary
+    const fitImageToGrid = (natW, natH, mediaUrl) => {
+      const ad = ads[currentAdIdx]
+      const gridB = getGridBounds(ad.gridSelection)
+      let fitW = natW, fitH = natH
+      if (fitW > gridB.w || fitH > gridB.h) {
+        const scaleW = gridB.w / fitW
+        const scaleH = gridB.h / fitH
+        const scale = Math.min(scaleW, scaleH)
+        fitW = Math.floor(fitW * scale)
+        fitH = Math.floor(fitH * scale)
+        toast('Image auto-sized to fit within grid boundary', { icon: 'ℹ️' })
+      }
+      updateAd({ media: mediaUrl, imgNaturalW: natW, imgNaturalH: natH })
+      updateLayout({ img: { ...ad.layout.img, w: fitW, h: fitH } })
+    }
+
     if (url) {
       toast.success("Image uploaded successfully", { id: toastId });
       const img = new Image()
-      img.onload = () => updateAd({ media: url, imgNaturalW: img.width, imgNaturalH: img.height })
+      img.onload = () => fitImageToGrid(img.width, img.height, url)
       img.src = url
     } else {
       // Fallback to local preview if upload fails (optional)
@@ -564,7 +617,7 @@ export default function CampaignManager() {
       const reader = new FileReader()
       reader.onload = ev => {
         const img = new Image()
-        img.onload = () => updateAd({ media: ev.target.result, imgNaturalW: img.width, imgNaturalH: img.height })
+        img.onload = () => fitImageToGrid(img.width, img.height, ev.target.result)
         img.src = ev.target.result
       }
       reader.readAsDataURL(file)
@@ -620,6 +673,9 @@ export default function CampaignManager() {
     window.addEventListener('mouseup',   onMouseUp)
   }
 
+  // Ref to track if we already showed the boundary toast during this drag
+  const gridBoundaryToastShown = useRef(false)
+
   const onMouseMove = useCallback((e) => {
     const d = dragRef.current; if (!d) return
     const dx = (e.clientX - d.startX) / d.scale
@@ -650,31 +706,60 @@ export default function CampaignManager() {
     else if (d.mode === 'resize-se') {
       let nw = Math.max(20, d.baseW + dx)
       let nh = d.lockRatio && d.natW && d.natH ? nw * d.natH / d.natW : Math.max(20, d.baseH + dy)
+      // Clamp to grid boundary
+      const maxW = banner.w - ad.layout.img.x
+      const maxH = banner.h - ad.layout.img.y
+      if (nw > maxW || nh > maxH) {
+        const scale = Math.min(maxW / nw, maxH / nh)
+        nw = nw * scale; nh = nh * scale
+        if (!gridBoundaryToastShown.current) { toast.error('Image size cannot exceed grid boundary'); gridBoundaryToastShown.current = true }
+      }
       updateLayout({ img: { ...ad.layout.img, w: nw, h: nh } })
     }
     else if (d.mode === 'resize-sw') {
       let nw = Math.max(20, d.baseW - dx)
       let nh = d.lockRatio && d.natW && d.natH ? nw * d.natH / d.natW : Math.max(20, d.baseH + dy)
-      const relX = ad.layout.img.x - (nw - d.baseW)
-      updateLayout({ img: { ...ad.layout.img, x: relX, w: nw, h: nh } })
+      let relX = ad.layout.img.x - (nw - d.baseW)
+      // Clamp to grid boundary (left edge and bottom)
+      if (relX < 0) { nw = nw + relX; relX = 0; if (d.lockRatio && d.natW && d.natH) nh = nw * d.natH / d.natW }
+      const maxH = banner.h - ad.layout.img.y
+      if (nh > maxH) { nh = maxH; if (d.lockRatio && d.natW && d.natH) { nw = nh * d.natW / d.natH; relX = ad.layout.img.x - (nw - d.baseW) } }
+      if (nw > banner.w || nh > banner.h) {
+        if (!gridBoundaryToastShown.current) { toast.error('Image size cannot exceed grid boundary'); gridBoundaryToastShown.current = true }
+      }
+      updateLayout({ img: { ...ad.layout.img, x: Math.max(0, relX), w: Math.min(nw, banner.w), h: Math.min(nh, banner.h) } })
     }
     else if (d.mode === 'resize-ne') {
       let nw = Math.max(20, d.baseW + dx)
       let nh = d.lockRatio && d.natW && d.natH ? nw * d.natH / d.natW : Math.max(20, d.baseH - dy)
-      const relY = ad.layout.img.y - (nh - d.baseH)
-      updateLayout({ img: { ...ad.layout.img, y: relY, w: nw, h: nh } })
+      let relY = ad.layout.img.y - (nh - d.baseH)
+      // Clamp to grid boundary (right edge and top)
+      const maxW = banner.w - ad.layout.img.x
+      if (nw > maxW) { nw = maxW; if (d.lockRatio && d.natW && d.natH) nh = nw * d.natH / d.natW; relY = ad.layout.img.y - (nh - d.baseH) }
+      if (relY < 0) { nh = nh + relY; relY = 0; if (d.lockRatio && d.natW && d.natH) nw = nh * d.natW / d.natH }
+      if (nw > banner.w || nh > banner.h) {
+        if (!gridBoundaryToastShown.current) { toast.error('Image size cannot exceed grid boundary'); gridBoundaryToastShown.current = true }
+      }
+      updateLayout({ img: { ...ad.layout.img, y: Math.max(0, relY), w: Math.min(nw, banner.w), h: Math.min(nh, banner.h) } })
     }
     else if (d.mode === 'resize-nw') {
       let nw = Math.max(20, d.baseW - dx)
       let nh = d.lockRatio && d.natW && d.natH ? nw * d.natH / d.natW : Math.max(20, d.baseH - dy)
-      const relX = ad.layout.img.x - (nw - d.baseW)
-      const relY = ad.layout.img.y - (nh - d.baseH)
-      updateLayout({ img: { ...ad.layout.img, x: relX, y: relY, w: nw, h: nh } })
+      let relX = ad.layout.img.x - (nw - d.baseW)
+      let relY = ad.layout.img.y - (nh - d.baseH)
+      // Clamp to grid boundary (left edge and top)
+      if (relX < 0) { nw = nw + relX; relX = 0; if (d.lockRatio && d.natW && d.natH) { nh = nw * d.natH / d.natW; relY = ad.layout.img.y - (nh - d.baseH) } }
+      if (relY < 0) { nh = nh + relY; relY = 0; if (d.lockRatio && d.natW && d.natH) { nw = nh * d.natW / d.natH; relX = ad.layout.img.x - (nw - d.baseW) } }
+      if (nw > banner.w || nh > banner.h) {
+        if (!gridBoundaryToastShown.current) { toast.error('Image size cannot exceed grid boundary'); gridBoundaryToastShown.current = true }
+      }
+      updateLayout({ img: { ...ad.layout.img, x: Math.max(0, relX), y: Math.max(0, relY), w: Math.min(nw, banner.w), h: Math.min(nh, banner.h) } })
     }
   }, [ads, currentAdIdx, updateLayout])
 
   const onMouseUp = useCallback(() => {
     dragRef.current = null
+    gridBoundaryToastShown.current = false
     setGuideV(null); setGuideH(null)
     window.removeEventListener('mousemove', onMouseMove)
     window.removeEventListener('mouseup',   onMouseUp)
@@ -705,7 +790,7 @@ export default function CampaignManager() {
       opacity: looping ? (animVisible?1:0) : 1,
       transform: looping ? animOffset : 'none',
       transition: looping ? `opacity ${currentAd.animSpeed}s ease, transform ${currentAd.animSpeed}s ease` : 'none',
-      overflow: 'visible',
+      overflow: 'hidden',
     }
   }
 
@@ -770,7 +855,7 @@ export default function CampaignManager() {
             ))}
           </div>
           <div className="cm-nav-sidebar-bottom">
-            <button className="cm-nav-logout" onClick={() => logout()}>
+            <button className="cm-nav-logout" onClick={() => logoutAdvertiser()}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                 <polyline points="16 17 21 12 16 7"/>
@@ -948,15 +1033,19 @@ export default function CampaignManager() {
 
                     <div className="cm-transform-row">
                       <span className="cm-transform-label">Width</span>
-                      <input type="range" min="20" max="1920" className="cm-slider"
-                        value={currentAd.layout.img.w}
+                      <input type="range" min="20" max={bounds.w} className="cm-slider"
+                        value={Math.min(currentAd.layout.img.w, bounds.w)}
                         onChange={e=>{
-                          const nw=Number(e.target.value)
-                          const nh=currentAd.imgLockRatio&&currentAd.imgNaturalW&&currentAd.imgNaturalH
+                          let nw=Number(e.target.value)
+                          let nh=currentAd.imgLockRatio&&currentAd.imgNaturalW&&currentAd.imgNaturalH
                             ? nw*currentAd.imgNaturalH/currentAd.imgNaturalW : currentAd.layout.img.h
+                          // Clamp to grid boundary
+                          if (nw > bounds.w) { nw = bounds.w; if (currentAd.imgLockRatio&&currentAd.imgNaturalW&&currentAd.imgNaturalH) nh = nw*currentAd.imgNaturalH/currentAd.imgNaturalW; toast.error('Image width cannot exceed grid boundary') }
+                          if (nh > bounds.h) { nh = bounds.h; if (currentAd.imgLockRatio&&currentAd.imgNaturalW&&currentAd.imgNaturalH) nw = nh*currentAd.imgNaturalW/currentAd.imgNaturalH; toast.error('Image height cannot exceed grid boundary') }
                           updateLayout({img:{...currentAd.layout.img,w:nw,h:nh}})
                         }}/>
                       <span className="cm-scale-val">{Math.round(currentAd.layout.img.w)}</span>
+                      <span className="cm-scale-val" style={{fontSize:'0.65rem',color:'var(--muted)'}}>(max {bounds.w})</span>
                     </div>
 
                     <label className="cm-lock-ratio">

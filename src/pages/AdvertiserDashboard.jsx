@@ -958,7 +958,7 @@ export default function AdvertiserDashboard() {
                     <table className="ad-table">
                       <thead>
                         <tr>
-                          <th>Campaign</th><th>Status</th><th>Est. Cost</th><th>Tier</th><th>Duration</th><th>Exclusive</th>
+                          <th>Campaign</th><th>Status</th><th>Plays</th><th>Est. Cost</th><th>Tier</th><th>Duration</th><th>Exclusive</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -968,6 +968,7 @@ export default function AdvertiserDashboard() {
                             <tr key={c.id} className="ad-table-row" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
                               <td><span className="ad-table-name">{c.campaign_name}</span><span className="ad-table-id">{c.campaign_id}</span></td>
                               <td><StatusBadge status={c.status} /></td>
+                              <td><span className="ad-play-count">{c.play_count || 0}</span></td>
                               <td>{c.estimated_cost_rupees ? `₹${parseFloat(c.estimated_cost_rupees).toLocaleString('en-IN')}` : '—'}</td>
                               <td>{c.tier ? <TierBadge tier={c.tier} /> : '—'}</td>
                               <td className="ad-muted">{c.campaign_duration_days ? `${c.campaign_duration_days}d` : '—'}</td>
@@ -975,7 +976,7 @@ export default function AdvertiserDashboard() {
                             </tr>
                           ))}
                         {brandCamps.filter(c => brandStatusFilter === 'all' || c.status === brandStatusFilter).length === 0 && (
-                          <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No {brandStatusFilter} campaigns.</td></tr>
+                          <tr><td colSpan={7} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>No {brandStatusFilter} campaigns.</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -1232,6 +1233,7 @@ export default function AdvertiserDashboard() {
                       <tr>
                         <th>Campaign</th>
                         <th>Status</th>
+                        <th>Plays</th>
                         <th>Est. Cost</th>
                         <th>Tier</th>
                         <th>Duration</th>
@@ -1248,6 +1250,7 @@ export default function AdvertiserDashboard() {
                               <span className="ad-table-id">{c.campaign_id}</span>
                             </td>
                             <td><StatusBadge status={c.status} /></td>
+                            <td><span className="ad-play-count">{c.play_count || 0}</span></td>
                             <td>
                               {c.estimated_cost_rupees
                                 ? `₹${parseFloat(c.estimated_cost_rupees).toLocaleString('en-IN')}`
@@ -1260,7 +1263,7 @@ export default function AdvertiserDashboard() {
                         ))}
                       {brandCampaigns.filter(c => brandStatusFilter === 'all' || c.status === brandStatusFilter).length === 0 && (
                         <tr>
-                          <td colSpan={6} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>
+                          <td colSpan={7} style={{ textAlign:'center', color:'var(--muted)', padding:'2rem' }}>
                             No {brandStatusFilter} campaigns.
                           </td>
                         </tr>

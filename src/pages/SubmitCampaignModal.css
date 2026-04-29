@@ -171,7 +171,10 @@
 
 /* ── Tier grid ── */
 .scm-tier-grid {
-  display: grid; grid-template-columns: repeat(5,1fr); gap: 0.5rem;
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 0.5rem;
+}
+.scm-tier-card:first-child {
+  /* Auto card occupies first spot naturally */
 }
 .scm-tier-card {
   display: flex; flex-direction: column; gap: 0.2rem;
@@ -434,3 +437,80 @@
 .scm-modal::-webkit-scrollbar { width: 6px; }
 .scm-modal::-webkit-scrollbar-track { background: transparent; }
 .scm-modal::-webkit-scrollbar-thumb { background: #E5E7EB; border-radius: 3px; }
+
+/* ── Auto Tier Card ── */
+.scm-tier-auto {
+  background: linear-gradient(135deg, #EEF2FF 0%, #F0FDF4 100%);
+  border-color: #818CF8;
+}
+.scm-tier-auto:hover {
+  border-color: #6366F1;
+  background: linear-gradient(135deg, #E0E7FF 0%, #DCFCE7 100%);
+}
+.scm-tier-auto.active {
+  border-color: #6366F1;
+  background: linear-gradient(135deg, #E0E7FF 0%, #DCFCE7 100%);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+.scm-tier-auto .scm-tier-label::before {
+  content: '✦ ';
+  color: #6366F1;
+}
+.scm-tier-auto .scm-tier-cpm {
+  background: rgba(99,102,241,0.12);
+  color: #6366F1;
+}
+
+/* ── Ad Count Summary Bar ── */
+.scm-ad-count-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 0 1.75rem 0.5rem;
+  background: #F9FAFB;
+  border: 1.5px solid #E5E7EB;
+  border-radius: 14px;
+  padding: 0.85rem 1.15rem;
+}
+.scm-ad-count-icon {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: #EEF2FF;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  color: #3B5BFF;
+}
+.scm-ad-count-info {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.scm-ad-count-num {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1;
+}
+.scm-ad-count-text {
+  font-size: 0.78rem;
+  color: #6B7280;
+  font-weight: 400;
+}
+.scm-ad-count-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+.scm-ad-count-chip {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #374151;
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 100px;
+  padding: 0.2rem 0.6rem;
+  white-space: nowrap;
+}
