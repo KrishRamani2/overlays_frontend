@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getMe } from '../api/auth'
+import { getSecureItem } from '../utils/secureStorage'
 import Navbar from '../components/Navbar'
 import './Home.css'
 
@@ -27,7 +28,7 @@ function usePostLoginRedirect() {
     getMe().then(user => {
       if (!user) return
       if (user.role === 'streamer') {
-        const hasSetup = localStorage.getItem(`setup_done_${user.id}`)
+        const hasSetup = getSecureItem(`setup_done_${user.id}`)
         navigate(hasSetup ? '/streamer-dashboard' : '/setup/profile', { replace: true })
       } else if (user.role === 'advertiser') {
         const id = user.id || user._id || 'demo-id';

@@ -1,6 +1,7 @@
 const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:1000/api/v1'
 const ADV_BASE = import.meta.env.VITE_ADVERTISER_API_BASE || 'http://localhost:8000'
 const STREAMER_BASE = 'http://127.0.0.1:5000'
+import { setSecureItem, getSecureItem, removeSecureItem } from '../utils/secureStorage'
 
 /* ── Session persistence helpers (1-year expiry) ── */
 
@@ -16,12 +17,12 @@ export function saveStreamerSession(data) {
     data,
     expiresAt: Date.now() + ONE_YEAR_MS,
   }
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  setSecureItem(SESSION_KEY, session)
   // Also keep legacy keys for dashboard and quick-login
-  localStorage.setItem('streamer_user', JSON.stringify(data))
+  setSecureItem('streamer_user', data)
   const u = data.user || data
   const uid = u.id || u.uid
-  if (uid) localStorage.setItem('userId', uid)
+  if (uid) setSecureItem('userId', uid)
 }
 
 /**
@@ -29,9 +30,8 @@ export function saveStreamerSession(data) {
  */
 export function getStreamerSession() {
   try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    if (!raw) return null
-    const session = JSON.parse(raw)
+    const session = getSecureItem(SESSION_KEY)
+    if (!session) return null
     if (!session.expiresAt || Date.now() > session.expiresAt) {
       clearStreamerSession()
       return null
@@ -46,9 +46,9 @@ export function getStreamerSession() {
  * Clear all streamer session data (used on logout).
  */
 export function clearStreamerSession() {
-  localStorage.removeItem(SESSION_KEY)
-  localStorage.removeItem('streamer_user')
-  localStorage.removeItem('userId')
+  removeSecureItem(SESSION_KEY)
+  removeSecureItem('streamer_user')
+  removeSecureItem('userId')
 }
 
 /**
@@ -224,15 +224,73 @@ export async function fetchTierBrands(tier) {
   }
 }
 
-export async function postApprovedAd(adData) {
+export async function postRejectedAd(streamerId, adData) {
   try {
-    const res = await fetch(`${STREAMER_BASE}/api/streamer/approved-brand-ads`, {
+    const res = await fetch(`${STREAMER_BASE}/api/streamer/approved-brand-ads/${streamerId}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(adData),
+      credentials: 'include'
+    })
+    if (!res.ok) throw new Error('Failed to post rejected ad')
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}
+
+export async function fetchRejectedAds(streamerId) {
+  try {
+    const res = await fetch(`${STREAMER_BASE}/api/streamer/approved-brand-ads/${streamerId}/reject`, {
+      credentials: 'include'
+    })
+    if (!res.ok) return []
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return []
+  }
+}
+
+export async function postApprovedAd(streamerId, adData) {
+  try {
+    const res = await fetch(`${STREAMER_BASE}/api/streamer/approved-brand-ads/${streamerId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(adData),
       credentials: 'include'
     })
     if (!res.ok) throw new Error('Failed to post approved ad')
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}
+
+export async function fetchApprovedAds(streamerId) {
+  try {
+    const res = await fetch(`${STREAMER_BASE}/api/streamer/approved-brand-ads/${streamerId}`, {
+      credentials: 'include'
+    })
+    if (!res.ok) return []
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return []
+  }
+}
+
+export async function updateApprovedAd(streamerId, adId, adData) {
+  try {
+    const res = await fetch(`${STREAMER_BASE}/api/streamer/approved-brand-ads/${streamerId}/${adId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(adData),
+      credentials: 'include'
+    })
+    if (!res.ok) throw new Error('Failed to update approved ad')
     return await res.json()
   } catch (err) {
     console.error(err)

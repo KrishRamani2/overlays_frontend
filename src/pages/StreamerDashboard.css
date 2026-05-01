@@ -452,6 +452,23 @@
 .sd-days-badge.muted { background: var(--off); color: var(--muted); border: 1px solid var(--border); }
 .sd-progress-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--border); border-radius: 100px; }
 .sd-progress-fill{ height: 100%; background: #10B981; border-radius: 100px; transition: width 0.1s; }
+.sd-progress-bar-waiting { height: 2px; background: rgba(59,91,255,0.1); }
+.sd-progress-fill-waiting { background: rgba(59,91,255,0.35); transition: width 0.5s; }
+.sd-countdown-badge {
+  font-size: 0.68rem; font-weight: 600; font-variant-numeric: tabular-nums;
+  color: var(--blue); background: var(--blue-soft); border: 1px solid #C7D2FE;
+  padding: 0.18rem 0.6rem; border-radius: 100px; white-space: nowrap;
+  animation: sd-countdown-pulse 2s ease-in-out infinite;
+}
+@keyframes sd-countdown-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.sd-now-badge {
+  font-size: 0.68rem; font-weight: 700; color: #059669;
+  background: #ECFDF5; border: 1px solid #A7F3D0;
+  padding: 0.18rem 0.6rem; border-radius: 100px; white-space: nowrap;
+}
 .sd-checkbox { accent-color: var(--blue); width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
 
 /* ── Brands grid ── */

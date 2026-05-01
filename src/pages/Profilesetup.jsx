@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch, getMe } from '../api/auth'
+import { setSecureItem } from '../utils/secureStorage'
 import './ProfileSetup.css'
 
 const LogoIcon = () => (
@@ -91,14 +92,14 @@ export default function ProfileSetup() {
   try {
     // Save all locally until backend adds content categories endpoint
     if (user) {
-      localStorage.setItem(`profile_${user.id}`, JSON.stringify({
+      setSecureItem(`profile_${user.id}`, {
         username,
         channelUrl,
         categories,
         blockedBrands,
         avatarPreview: avatarFile ? avatarPreview : (user.picture || user.avatar || ''),
-      }))
-      localStorage.setItem(`setup_done_${user.id}`, 'true')
+      })
+      setSecureItem(`setup_done_${user.id}`, 'true')
     }
     navigate('/streamer-dashboard', { replace: true })
   } catch {
@@ -108,7 +109,7 @@ export default function ProfileSetup() {
 }
 
   const handleSkipToEnd = async () => {
-  if (user) localStorage.setItem(`setup_done_${user.id}`, 'true')
+  if (user) setSecureItem(`setup_done_${user.id}`, 'true')
   navigate('/streamer-dashboard', { replace: true })
 }
 
