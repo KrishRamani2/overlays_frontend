@@ -758,6 +758,9 @@
   box-shadow: 0 32px 80px rgba(0,0,0,0.22);
   display: flex; flex-direction: column; overflow: hidden;
 }
+.sd-modal-lg {
+  max-width: 960px;
+}
 .sd-modal-head {
   display: flex; align-items: flex-start; justify-content: space-between;
   padding: 1.75rem 1.75rem 0; margin-bottom: 1.25rem;

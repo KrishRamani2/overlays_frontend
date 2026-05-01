@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { getStreamerMe, logout, apiFetch, fetchStreamerUser } from '../api/auth'
+import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd } from '../api/auth'
 import { useParams, useNavigate } from 'react-router-dom'
 import './StreamerDashboard.css'
 
@@ -15,6 +15,19 @@ const LogoIcon = () => (
   </svg>
 )
 
+/* ── Helpers ── */
+function getGridBounds(indices) {
+  if (!indices || indices.length === 0) indices = [6,7,8]; // fallback bottom third
+  const W = 640, H = 360
+  let minCol = 2, maxCol = 0, minRow = 2, maxRow = 0
+  indices.forEach(idx => {
+    const row = Math.floor(idx / 3), col = idx % 3
+    if (row < minRow) minRow = row; if (row > maxRow) maxRow = row
+    if (col < minCol) minCol = col; if (col > maxCol) maxCol = col
+  })
+  return { x: minCol*W, y: minRow*H, w:(maxCol-minCol+1)*W, h:(maxRow-minRow+1)*H }
+}
+
 /* ══════════════════════════════════════════
    DUMMY DATA
 ══════════════════════════════════════════ */
@@ -24,7 +37,7 @@ const DUMMY_USER = {
   email: 'alex@example.com',
   tier: 'Tier 2',
   channel: 'AlexPlays',
-  avgViewers: 8400,
+  avgViewers: 600000,
   joinedDate: 'Jan 2025',
 }
 
@@ -95,11 +108,11 @@ const ALL_POSITIONS = [
 ]
 
 const TIER_META = {
-  'Tier 1': { color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', viewers: '100K+',  rate: '3.0×' },
-  'Tier 2': { color: '#3B5BFF', bg: '#EEF2FF', border: '#C7D2FE', viewers: '20K–100K', rate: '1.8×' },
-  'Tier 3': { color: '#059669', bg: '#ECFDF5', border: '#A7F3D0', viewers: '5K–20K',  rate: '1.2×' },
-  'Tier 4': { color: '#D97706', bg: '#FEF3C7', border: '#FCD34D', viewers: '1K–5K',   rate: '0.8×' },
-  'Tier 5': { color: '#EF4444', bg: '#FEF2F2', border: '#FECACA', viewers: 'up to 1K', rate: '0.5×' },
+  'Tier 1': { color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', viewers: '> 5M',  rate: '3.0×' },
+  'Tier 2': { color: '#3B5BFF', bg: '#EEF2FF', border: '#C7D2FE', viewers: '500K–5M', rate: '1.8×' },
+  'Tier 3': { color: '#059669', bg: '#ECFDF5', border: '#A7F3D0', viewers: '50K–500K',  rate: '1.2×' },
+  'Tier 4': { color: '#D97706', bg: '#FEF3C7', border: '#FCD34D', viewers: '500–50K',   rate: '0.8×' },
+  'Tier 5': { color: '#EF4444', bg: '#FEF2F2', border: '#FECACA', viewers: '0–500', rate: '0.5×' },
 }
 
 const STREAM_CONTENT_OPTIONS = [
@@ -281,6 +294,47 @@ export default function StreamerDashboard() {
     }
   }, [navigate])
 
+  /* ── Ad Requests Fetching & Caching ── */
+  useEffect(() => {
+    if (!user || DEV_MODE) return
+
+    const tier = user.tier || 'Tier 5'
+    const userId = user.id || user.uid || id
+    if (!userId) return
+
+    const cacheKey = `streamer_ad_requests_v3_${userId}_${tier}`
+    const cached = localStorage.getItem(cacheKey)
+
+    if (cached) {
+      try {
+        setAdRequests(JSON.parse(cached))
+        return
+      } catch (e) {
+        console.error("Failed to parse cached ad requests", e)
+      }
+    }
+
+    fetchTierBrands(tier).then(data => {
+      if (data && data.items) {
+        const mapped = data.items.flatMap(brand => 
+          (brand.campaigns || []).map(camp => ({
+            id: `req_${camp.id || camp.campaign_id}`,
+            campaignId: camp.campaign_id || camp.id,
+            brand: brand.brand_name,
+            displayName: `${brand.brand_name} — ${camp.campaign_name}`,
+            tier: camp.tier || tier,
+            budgetRange: `₹${camp.estimated_cost_rupees || '0'}`,
+            daysLive: camp.campaign_duration_days || 7,
+            type: camp.ads && camp.ads.length > 0 ? camp.ads[0].ad_type : 'unknown',
+            ads: camp.ads || []
+          }))
+        )
+        setAdRequests(mapped)
+        localStorage.setItem(cacheKey, JSON.stringify(mapped))
+      }
+    }).catch(err => console.error("Failed to fetch tier brands", err))
+  }, [user, id])
+
   /* ── Keep refs in sync ── */
   useEffect(() => { playlistRef.current = playlist }, [playlist])
   useEffect(() => { gapRef.current = gapInput }, [gapInput])
@@ -351,10 +405,35 @@ export default function StreamerDashboard() {
   const approveRequest = (reqId, campaignId) => {
     if (!window.confirm('Approve this ad request?')) return
     const req = adRequests.find(r => r.id === reqId)
+    if (!req) return
+
+    const userId = user.id || user.uid || id
+    
+    // Persist to backend
+    const adToApprove = req.ads?.[0]
+    if (adToApprove) {
+      postApprovedAd({
+        streamer_id: userId,
+        campaign_id: campaignId,
+        brand_name: req.brand,
+        ad_name: adToApprove.ad_name,
+        ad_text: adToApprove.ad_copy,
+        ad_media_url: adToApprove.image_url,
+        ad_media_type: adToApprove.ad_type,
+        approved_count: req.daysLive * 144, // assuming some frequency
+        status: 'approved'
+      })
+    }
+
     setAdRequests(p => p.filter(r => r.id !== reqId))
     setPlaylist(p => [...p, {
       id: campaignId, name: req.displayName, brand: req.brand,
-      duration: 15, status: 'upcoming', daysLeft: req.daysLive, earnings: '—', type: req.type
+      duration: adToApprove?.duration_seconds || 15, 
+      status: 'upcoming', 
+      daysLeft: req.daysLive, 
+      earnings: '—', 
+      type: req.type,
+      ads: req.ads
     }])
   }
 
@@ -453,7 +532,7 @@ export default function StreamerDashboard() {
 
   const liveAds     = playlist.filter(a => a.status === 'live')
   const upcomingAds = playlist.filter(a => a.status === 'upcoming')
-  const tierMeta    = TIER_META[user?.tier] || TIER_META['Tier 3']
+  const tierMeta    = TIER_META[user?.tier] || TIER_META['Tier 5']
 
   const step1Valid = streamTitle.trim() && streamLink.trim() && streamContent
 
@@ -572,7 +651,7 @@ export default function StreamerDashboard() {
               <div className="sd-overview-top">
                 <div className="sd-tier-card" style={{ borderColor: tierMeta.border, background: tierMeta.bg }}>
                   <div className="sd-tier-badge-wrap">
-                    <span className="sd-tier-name" style={{ color: tierMeta.color }}>{user?.tier || 'Tier 3'}</span>
+                    <span className="sd-tier-name" style={{ color: tierMeta.color }}>{user?.tier || 'Tier 5'}</span>
                     <span className="sd-tier-viewers" style={{ color: tierMeta.color }}>{tierMeta.viewers} avg viewers</span>
                   </div>
                   <div className="sd-tier-desc">Rate multiplier <strong style={{ color: tierMeta.color }}>{tierMeta.rate}</strong></div>
@@ -582,7 +661,7 @@ export default function StreamerDashboard() {
                   </div>
                   <div className="sd-tier-channel">
                     <span className="sd-tier-channel-label">Avg viewers</span>
-                    <span className="sd-tier-channel-val">{user?.avgViewers?.toLocaleString() || '0'}</span>
+                    <span className="sd-tier-channel-val">{user?.avg_viewers?.toLocaleString() || user?.avgViewers?.toLocaleString() || '0'}</span>
                   </div>
                   <div className="sd-tier-channel">
                     <span className="sd-tier-channel-label">Member since</span>
@@ -915,7 +994,7 @@ export default function StreamerDashboard() {
                           </div>
                           <div className="sd-request-btns">
                             <button className="sd-btn-ghost sd-btn-sm"
-                              onClick={() => { setPreviewAd({ name: req.displayName, brand: req.brand, type: req.type }); setPreviewOpen(true) }}>
+                              onClick={() => { setPreviewAd(req); setPreviewOpen(true) }}>
                               Preview
                             </button>
                             <button className="sd-btn-primary sd-btn-sm" onClick={() => approveRequest(req.id, req.campaignId)}>Approve</button>
@@ -1566,7 +1645,7 @@ export default function StreamerDashboard() {
       {/* ── PREVIEW MODAL ── */}
       {previewOpen && (
         <div className="sd-modal-overlay" onClick={() => setPreviewOpen(false)}>
-          <div className="sd-modal" onClick={e => e.stopPropagation()}>
+          <div className="sd-modal sd-modal-lg" onClick={e => e.stopPropagation()}>
             <div className="sd-modal-head">
               <div>
                 <div className="sd-eyebrow">Ad Preview</div>
@@ -1576,15 +1655,106 @@ export default function StreamerDashboard() {
               <button className="sd-modal-close" onClick={() => setPreviewOpen(false)}>✕</button>
             </div>
             <div className="sd-simulator">
-              <div className="sd-sim-bg">
+              <div className="sd-sim-bg" style={{
+                containerType: 'inline-size',
+                ...(previewAd?.ads?.[0]
+                  ? {
+                      background: previewAd.ads[0].stream_background_url 
+                        ? `url(${previewAd.ads[0].stream_background_url}) center/cover no-repeat` 
+                        : (previewAd.ads[0].canvas_background || '#0d0d1a')
+                    }
+                  : {})
+              }}>
                 <div className="sd-sim-play-icon"><div className="sd-sim-triangle"/></div>
                 <div className="sd-sim-bar">
                   <div className="sd-sim-progress"><div className="sd-sim-dot"/></div>
                 </div>
+
+                {/* Actual Ad Overlay Preview - High Fidelity (1920x1080 mapped via CSS percentages) */}
+                {previewAd?.ads && previewAd.ads.length > 0 && (() => {
+                  const ad = previewAd.ads[0];
+                  const allowedCells = ad.grid_cell_placement ? ad.grid_cell_placement.split(',').map(Number) : [6,7,8];
+                  const bounds = getGridBounds(allowedCells);
+
+                  return (
+                    <div className="sd-sim-ad-container" style={{
+                      position: 'absolute',
+                      inset: 0,
+                      pointerEvents: 'none'
+                    }}>
+                      {/* Banner Container */}
+                      <div style={{
+                        position: 'absolute',
+                        left: `${(bounds.x / 1920) * 100}%`,
+                        top: `${(bounds.y / 1080) * 100}%`,
+                        width: `${(bounds.w / 1920) * 100}%`,
+                        height: `${(bounds.h / 1080) * 100}%`,
+                        background: ad.banner_background_color || 'transparent',
+                        borderRadius: '0px', 
+                        boxShadow: ad.banner_background_color ? '0 10px 30px rgba(0,0,0,0.25)' : 'none',
+                        overflow: 'hidden',
+                        zIndex: 1
+                      }}>
+                        {/* Image Layer */}
+                        {ad.image_url && (
+                          <img 
+                            src={ad.image_url} 
+                            alt="" 
+                            style={{
+                              position: 'absolute',
+                              left: `${(Math.max(0, ad.image_x || 0) / bounds.w) * 100}%`,
+                              top: `${(Math.max(0, ad.image_y || 0) / bounds.h) * 100}%`,
+                              width: `${((ad.image_width || 300) / bounds.w) * 100}%`,
+                              height: 'auto',
+                              transform: `scale(${ad.content_zoom || 1}) rotate(${ad.image_rotate || 0}deg)`,
+                              transformOrigin: 'top left',
+                              zIndex: ad.z_order || 1,
+                              objectFit: 'contain'
+                            }} 
+                          />
+                        )}
+
+                        {/* Text Layer */}
+                        {ad.ad_copy && (() => {
+                          let styles = {};
+                          try {
+                            const parsed = typeof ad.text_style === 'string' ? JSON.parse(ad.text_style) : ad.text_style;
+                            if (parsed.bold) styles.fontWeight = 'bold';
+                            if (parsed.italic) styles.fontStyle = 'italic';
+                            if (parsed.underline) styles.textDecoration = 'underline';
+                            if (parsed.heading) styles.textTransform = 'uppercase';
+                          } catch (e) {}
+
+                          return (
+                            <div style={{
+                              position: 'absolute',
+                              left: `${(Math.max(0, ad.text_x || 0) / bounds.w) * 100}%`,
+                              top: `${(Math.max(0, ad.text_y || 0) / bounds.h) * 100}%`,
+                              color: ad.text_color || '#ffffff',
+                              fontSize: `calc(${(ad.text_size || 24) / 1920} * 100cqw)`, 
+                              zIndex: ad.text_z_order || 2,
+                              fontFamily: 'Geist, sans-serif',
+                              whiteSpace: 'nowrap',
+                              padding: `calc(8 / 1920 * 100cqw) calc(16 / 1920 * 100cqw)`,
+                              transform: `scale(${ad.content_zoom || 1})`,
+                              transformOrigin: 'top left',
+                              ...styles
+                            }}>
+                              {ad.ad_copy}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
-              <div className="sd-sim-overlay-hint">Ad overlay renders here during your live stream</div>
             </div>
-            <p className="sd-modal-note">Full preview available once backend is connected.</p>
+            <div className="sd-modal-footer" style={{ padding: '1.5rem 1.75rem', borderTop: '1px solid var(--border)', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button className="sd-btn-ghost" onClick={() => setPreviewOpen(false)}>Close</button>
+              <button className="sd-btn-danger-sm" style={{ padding: '0.6rem 1.3rem' }} onClick={() => { rejectRequest(previewAd.id); setPreviewOpen(false); }}>Reject</button>
+              <button className="sd-btn-primary" onClick={() => { approveRequest(previewAd.id, previewAd.campaignId); setPreviewOpen(false); }}>Approve Request</button>
+            </div>
           </div>
         </div>
       )}

@@ -211,3 +211,31 @@ export async function logoutAdvertiser() {
   } catch {}
   window.location.href = '/'
 }
+
+export async function fetchTierBrands(tier) {
+  try {
+    const encodedTier = encodeURIComponent(tier)
+    const url = `${ADV_BASE}/api/streamer/tiers/${encodedTier}/brands?sort_by=play_count&order=desc&include_ads=true`
+    const res = await fetch(url, { credentials: 'include' })
+    if (!res.ok) return []
+    return await res.json()
+  } catch {
+    return []
+  }
+}
+
+export async function postApprovedAd(adData) {
+  try {
+    const res = await fetch(`${STREAMER_BASE}/api/streamer/approved-brand-ads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(adData),
+      credentials: 'include'
+    })
+    if (!res.ok) throw new Error('Failed to post approved ad')
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}
