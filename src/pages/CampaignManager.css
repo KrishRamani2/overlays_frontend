@@ -188,6 +188,7 @@
 }
 .cm-status-draft    { color: #6B7280; }
 .cm-status-pending  { color: #D97706; }
+.cm-status-waiting  { color: #D97706; }
 .cm-status-approved { color: #059669; }
 .cm-status-live     { color: #059669; }
 .cm-status-rejected { color: #EF4444; }

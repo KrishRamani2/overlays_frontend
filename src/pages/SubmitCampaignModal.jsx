@@ -52,7 +52,7 @@ function formatINR(amount) {
 }
 
 export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, onConfirm, onClose }) {
-  const [tier,        setTier]        = useState('Auto')
+  const [tier,        setTier]        = useState(null)
   const [exclusive,   setExclusive]   = useState(false)
   const [durationOpt, setDurationOpt] = useState(7)
   const [customDays,  setCustomDays]  = useState(14)
@@ -424,10 +424,10 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
             )}
           </div>
           <div className="scm-estimate-meta">
-            Based on {tier} · ₹{tierInfo?.cpm} CPM · {tierInfo?.avgViewers?.toLocaleString('en-IN')} avg viewers · {days} days · every {frequency} min{exclusive ? ' · exclusive' : ''}
+            {tier ? `Based on ${tier} · ₹${tierInfo?.cpm} CPM · ${tierInfo?.avgViewers?.toLocaleString('en-IN')} avg viewers · ${days} days · every ${frequency} min${exclusive ? ' · exclusive' : ''}` : 'Select a tier above to see cost estimates'}
           </div>
 
-          {budgetStatus && (
+          {budgetStatus && tier && (
             <div className={`scm-budget-compare ${budgetExceeded ? 'exceeded' : 'within'}`}>
               <div className="scm-budget-compare-row">
                 <span>Estimated cost</span>

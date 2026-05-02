@@ -306,7 +306,7 @@ export default function CampaignManager() {
       z_order: ad.zOrder.img,
       text_z_order: ad.zOrder.text,
       content_zoom: ad.contentScale,
-      banner_background_color: ad.bgColor,
+      banner_background_color: ad.type === 'sticker' ? 'transparent' : `rgba(${parseInt(ad.bgColor.substr(1,2),16)},${parseInt(ad.bgColor.substr(3,2),16)},${parseInt(ad.bgColor.substr(5,2),16)},${ad.bgOpacity !== undefined ? ad.bgOpacity : 1})`,
       canvas_background: canvasBgColor,
       stream_background_url: canvasBgImage,
       entrance_animation: ad.animType,
@@ -354,18 +354,33 @@ export default function CampaignManager() {
     const payload = getCampaignPayload();
 
     try {
-      // Step 1: Save campaign + ads to backend
+      // Create campaign without ads payload first
+      const campaignPayload = { ...payload, ads: [] };
       const saveRes = await fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(payload)
+        body: JSON.stringify(campaignPayload)
       });
 
       if (!saveRes.ok) {
         const errData = await saveRes.json();
         toast.error(`Failed to save campaign: ${errData.detail || 'Server error'}`);
         return;
+      }
+
+      // Step 1.5: Post ads individually to the ads endpoint
+      for (const ad of payload.ads) {
+        const adRes = await fetch(`${ADV_BASE}/api/accounts/${userId}/campaigns/${campaignId}/ads`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(ad)
+        });
+        if (!adRes.ok) {
+          const errData = await adRes.json();
+          console.error("Ad save error:", errData);
+        }
       }
 
       // Step 2: Submit for review (this deducts from brand budget)
