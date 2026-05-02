@@ -234,7 +234,7 @@ export default function StreamerDashboard() {
       
       // Use id from user object
       const userId = u.id || u.uid
-      setOverlayLink(`${window.location.origin}/overlay?id=${userId}`)
+      setOverlayLink(`http://127.0.0.1:5000/api/overlay/${userId}`)
       
       // Load preferences if available
       if (data.preferences) {
@@ -374,24 +374,46 @@ export default function StreamerDashboard() {
         setAdRequests(mapped)
 
         if (approvedData) {
-          const mappedPlaylist = approvedData.map(ad => ({
-            id: `approved_${ad.id}`,
-            backendId: ad.id,
-            campaignId: ad.campaign_id,
-            name: ad.ad_name,
-            brand: ad.brand_name,
-            duration: ad.show_duration || 10,
-            status: ad.status === 'approved' ? 'live' : ad.status,
-            daysLeft: 0,
-            earnings: '—',
-            amountPerPlay: ad.amount_per_play || 0,
-            type: ad.ad_media_type || 'text',
-            remaining_count: ad.remaining_count,
-            approved_count: ad.approved_count,
-            used_count: ad.used_count || 0,
-            gridSelection: ad.grid_selection || [],
-            ads: ad.ad_media_url ? [{ media_url: ad.ad_media_url, ad_type: ad.ad_media_type, grid_selection: ad.grid_selection }] : []
-          })).sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
+          const mappedPlaylist = approvedData.map(ad => {
+            const layout = ad.layout_json || {}
+            let gridCellsStr = ''
+            if (layout.grid_cell_placement) {
+              gridCellsStr = Array.isArray(layout.grid_cell_placement)
+                ? layout.grid_cell_placement.join(',')
+                : String(layout.grid_cell_placement)
+            } else if (ad.grid_selection) {
+              gridCellsStr = Array.isArray(ad.grid_selection)
+                ? ad.grid_selection.join(',')
+                : String(ad.grid_selection)
+            }
+
+            const originalAd = {
+              ...layout,
+              media_url: ad.ad_media_url || layout.media_url || layout.image_url,
+              ad_type: ad.ad_media_type || layout.ad_type,
+              grid_cell_placement: gridCellsStr || '6,7,8'
+            }
+
+            return {
+              id: `approved_${ad.id}`,
+              backendId: ad.id,
+              campaignId: ad.campaign_id,
+              name: ad.ad_name,
+              brand: ad.brand_name,
+              duration: ad.show_duration || 10,
+              status: ad.status === 'approved' ? 'live' : ad.status,
+              daysLeft: 0,
+              earnings: '—',
+              amountPerPlay: ad.amount_per_play || 0,
+              type: ad.ad_media_type || 'text',
+              remaining_count: ad.remaining_count,
+              approved_count: ad.approved_count,
+              used_count: ad.used_count || 0,
+              gridSelection: ad.grid_selection || [],
+              ads: [originalAd],
+              layout_json: layout
+            }
+          }).sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
           setPlaylist(mappedPlaylist)
         }
 
@@ -553,7 +575,8 @@ export default function StreamerDashboard() {
         grid_selection: adToApprove.grid_cell_placement
           ? adToApprove.grid_cell_placement.split(',').map(Number)
           : [],
-        show_duration: adToApprove.duration_seconds || 15
+        show_duration: adToApprove.duration_seconds || 15,
+        layout_json: adToApprove
       })
 
       if (!backendAd) {
@@ -2001,6 +2024,42 @@ export default function StreamerDashboard() {
               </div>
               <button className="sd-modal-close" onClick={() => setPreviewOpen(false)}>✕</button>
             </div>
+            {(() => {
+              const labels = [
+                "Top Left", "Top Center", "Top Right",
+                "Center Left", "Center", "Center Right",
+                "Bottom Left", "Bottom Center", "Bottom Right"
+              ];
+              const getGridCellLabel = (indices) => {
+                if (!indices || indices.length === 0) return 'Bottom Row (Cells 6, 7, 8)';
+                return indices.map(idx => labels[idx]).filter(Boolean).join(', ');
+              };
+              const adFormat = previewAd?.ads?.[0]?.ad_type || previewAd?.type || 'Standard Overlay';
+              const gridPlacement = previewAd?.ads?.[0]?.grid_cell_placement 
+                ? getGridCellLabel(previewAd.ads[0].grid_cell_placement.split(',').map(Number)) 
+                : (previewAd?.gridSelection && previewAd.gridSelection.length > 0 
+                   ? getGridCellLabel(previewAd.gridSelection) 
+                   : 'Bottom Row (Cells 6, 7, 8)');
+
+              return (
+                <div className="sd-modal-ad-meta" style={{ padding: '0.85rem 1.75rem', display: 'flex', flexWrap: 'wrap', gap: '1.25rem', borderBottom: '1px solid #eef2f6', background: '#f8fafc', fontSize: '0.85rem' }}>
+                  <div style={{ flex: 1, minWidth: '120px' }}>
+                    <strong style={{ display: 'block', color: '#64748b', textTransform: 'uppercase', fontSize: '0.65rem', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>Ad Type / Format</strong>
+                    <span style={{ color: '#1e293b', fontWeight: '600' }}>{adFormat}</span>
+                  </div>
+                  <div style={{ flex: 1, minWidth: '120px' }}>
+                    <strong style={{ display: 'block', color: '#64748b', textTransform: 'uppercase', fontSize: '0.65rem', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>Grid Cells Placement</strong>
+                    <span style={{ color: '#1e293b', fontWeight: '600' }}>{gridPlacement}</span>
+                  </div>
+                  {previewAd?.amountPerPlay > 0 && (
+                    <div style={{ flex: 1, minWidth: '120px' }}>
+                      <strong style={{ display: 'block', color: '#64748b', textTransform: 'uppercase', fontSize: '0.65rem', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>Pay Per View</strong>
+                      <span style={{ color: '#1e293b', fontWeight: '600' }}>₹{previewAd.amountPerPlay.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <div className="sd-simulator">
               <div className="sd-sim-bg" style={{
                 containerType: 'inline-size',
