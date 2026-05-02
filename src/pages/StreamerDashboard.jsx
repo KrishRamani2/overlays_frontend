@@ -2076,17 +2076,59 @@ export default function StreamerDashboard() {
                   <div className="sd-sim-progress"><div className="sd-sim-dot"/></div>
                 </div>
 
-                {/* Full ad overlay preview (from incoming requests with full ad data) */}
-                {previewAd?.ads && previewAd.ads.length > 0 && previewAd.ads[0].grid_cell_placement && (() => {
-                  const ad = previewAd.ads[0];
-                  const allowedCells = ad.grid_cell_placement ? ad.grid_cell_placement.split(',').map(Number) : [6,7,8];
+                {/* Robust Unified Ad overlay preview for all types of preview items */}
+                {(() => {
+                  if (!previewAd) return null;
+                  let ad = null;
+                  if (previewAd.ads && previewAd.ads.length > 0) {
+                    ad = previewAd.ads[0];
+                  } else if (previewAd.layout_json) {
+                    ad = previewAd.layout_json;
+                  } else {
+                    ad = previewAd;
+                  }
+
+                  const allowedCells = ad?.grid_cell_placement
+                    ? (typeof ad.grid_cell_placement === 'string'
+                        ? ad.grid_cell_placement.split(',').map(Number)
+                        : ad.grid_cell_placement)
+                    : (previewAd?.gridSelection && previewAd.gridSelection.length > 0
+                        ? previewAd.gridSelection
+                        : [6,7,8]);
+
                   const bounds = getGridBounds(allowedCells);
+
+                  const adCopy = ad?.ad_copy || ad?.text || previewAd?.name;
+                  const imageUrl = ad?.image_url || ad?.media_url || previewAd?.media_url || previewAd?.image_url;
+                  const mediaType = ad?.ad_type || ad?.media_type || previewAd?.type || '';
+
+                  const bannerBg = ad?.banner_background_color || previewAd?.banner_background_color || 'transparent';
+                  const imgX = ad?.image_x !== undefined ? ad.image_x : (ad?.layout?.img?.x || 0);
+                  const imgY = ad?.image_y !== undefined ? ad.image_y : (ad?.layout?.img?.y || 0);
+                  const imgW = ad?.image_width !== undefined ? ad.image_width : (ad?.layout?.img?.w || 300);
+                  const imgRot = ad?.image_rotate !== undefined ? ad.image_rotate : (ad?.imgRotate || 0);
+                  const zOrder = ad?.z_order !== undefined ? ad.z_order : (ad?.zOrder?.img || 1);
+                  const zoom = ad?.content_zoom !== undefined ? ad.content_zoom : (ad?.contentScale || 1);
+
+                  const textX = ad?.text_x !== undefined ? ad.text_x : (ad?.layout?.text?.x || 0);
+                  const textY = ad?.text_y !== undefined ? ad.text_y : (ad?.layout?.text?.y || 0);
+                  const textColor = ad?.text_color || ad?.fontColor || '#ffffff';
+                  const textSize = ad?.text_size !== undefined ? ad.text_size : (ad?.layout?.text?.size || ad?.fontSize || 24);
+                  const textStyle = ad?.text_style || ad?.styles;
+                  const textZ = ad?.text_z_order !== undefined ? ad.text_z_order : (ad?.zOrder?.text || 2);
+
+                  let styles = {};
+                  try {
+                    const parsed = typeof textStyle === 'string' ? JSON.parse(textStyle) : textStyle;
+                    if (parsed && parsed.bold) styles.fontWeight = 'bold';
+                    if (parsed && parsed.italic) styles.fontStyle = 'italic';
+                    if (parsed && parsed.underline) styles.textDecoration = 'underline';
+                    if (parsed && parsed.heading) styles.textTransform = 'uppercase';
+                  } catch (e) {}
 
                   return (
                     <div className="sd-sim-ad-container" style={{
-                      position: 'absolute',
-                      inset: 0,
-                      pointerEvents: 'none'
+                      position: 'absolute', inset: 0, pointerEvents: 'none'
                     }}>
                       {/* Banner Container */}
                       <div style={{
@@ -2095,89 +2137,69 @@ export default function StreamerDashboard() {
                         top: `${(bounds.y / 1080) * 100}%`,
                         width: `${(bounds.w / 1920) * 100}%`,
                         height: `${(bounds.h / 1080) * 100}%`,
-                        background: ad.banner_background_color || 'transparent',
+                        background: bannerBg || 'transparent',
                         borderRadius: '0px', 
-                        boxShadow: ad.banner_background_color ? '0 10px 30px rgba(0,0,0,0.25)' : 'none',
+                        boxShadow: bannerBg ? '0 10px 30px rgba(0,0,0,0.25)' : 'none',
                         overflow: 'hidden',
                         zIndex: 1
                       }}>
                         {/* Image Layer */}
-                        {ad.image_url && (
-                          <img 
-                            src={ad.image_url} 
-                            alt="" 
-                            style={{
-                              position: 'absolute',
-                              left: `${(Math.max(0, ad.image_x || 0) / bounds.w) * 100}%`,
-                              top: `${(Math.max(0, ad.image_y || 0) / bounds.h) * 100}%`,
-                              width: `${((ad.image_width || 300) / bounds.w) * 100}%`,
-                              height: 'auto',
-                              transform: `scale(${ad.content_zoom || 1}) rotate(${ad.image_rotate || 0}deg)`,
-                              transformOrigin: 'top left',
-                              zIndex: ad.z_order || 1,
-                              objectFit: 'contain'
-                            }} 
-                          />
+                        {imageUrl && (
+                          mediaType?.includes?.('video') ? (
+                            <video 
+                              src={imageUrl} 
+                              autoPlay muted loop
+                              style={{
+                                position: 'absolute',
+                                left: `${(Math.max(0, imgX) / bounds.w) * 100}%`,
+                                top: `${(Math.max(0, imgY) / bounds.h) * 100}%`,
+                                width: `${(imgW / bounds.w) * 100}%`,
+                                height: 'auto',
+                                transform: `scale(${zoom}) rotate(${imgRot}deg)`,
+                                transformOrigin: 'top left',
+                                zIndex: zOrder,
+                                objectFit: 'contain'
+                              }} 
+                            />
+                          ) : (
+                            <img 
+                              src={imageUrl} 
+                              alt="" 
+                              style={{
+                                position: 'absolute',
+                                left: `${(Math.max(0, imgX) / bounds.w) * 100}%`,
+                                top: `${(Math.max(0, imgY) / bounds.h) * 100}%`,
+                                width: `${(imgW / bounds.w) * 100}%`,
+                                height: 'auto',
+                                transform: `scale(${zoom}) rotate(${imgRot}deg)`,
+                                transformOrigin: 'top left',
+                                zIndex: zOrder,
+                                objectFit: 'contain'
+                              }} 
+                            />
+                          )
                         )}
 
                         {/* Text Layer */}
-                        {ad.ad_copy && (() => {
-                          let styles = {};
-                          try {
-                            const parsed = typeof ad.text_style === 'string' ? JSON.parse(ad.text_style) : ad.text_style;
-                            if (parsed.bold) styles.fontWeight = 'bold';
-                            if (parsed.italic) styles.fontStyle = 'italic';
-                            if (parsed.underline) styles.textDecoration = 'underline';
-                            if (parsed.heading) styles.textTransform = 'uppercase';
-                          } catch (e) {}
-
-                          return (
-                            <div style={{
-                              position: 'absolute',
-                              left: `${(Math.max(0, ad.text_x || 0) / bounds.w) * 100}%`,
-                              top: `${(Math.max(0, ad.text_y || 0) / bounds.h) * 100}%`,
-                              color: ad.text_color || '#ffffff',
-                              fontSize: `calc(${(ad.text_size || 24) / 1920} * 100cqw)`, 
-                              zIndex: ad.text_z_order || 2,
-                              fontFamily: 'Geist, sans-serif',
-                              whiteSpace: 'nowrap',
-                              padding: `calc(8 / 1920 * 100cqw) calc(16 / 1920 * 100cqw)`,
-                              transform: `scale(${ad.content_zoom || 1})`,
-                              transformOrigin: 'top left',
-                              ...styles
-                            }}>
-                              {ad.ad_copy}
-                            </div>
-                          );
-                        })()}
+                        {adCopy && (
+                          <div style={{
+                            position: 'absolute',
+                            left: `${(Math.max(0, textX) / bounds.w) * 100}%`,
+                            top: `${(Math.max(0, textY) / bounds.h) * 100}%`,
+                            color: textColor || '#ffffff',
+                            fontSize: `calc(${textSize / 1920} * 100cqw)`, 
+                            zIndex: textZ,
+                            fontFamily: 'Geist, sans-serif',
+                            whiteSpace: 'nowrap',
+                            padding: `calc(8 / 1920 * 100cqw) calc(16 / 1920 * 100cqw)`,
+                            transform: `scale(${zoom})`,
+                            transformOrigin: 'top left',
+                            ...styles
+                          }}>
+                            {adCopy}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Simple media preview fallback (for approved playlist ads with only media_url) */}
-                {previewAd?.ads && previewAd.ads.length > 0 && !previewAd.ads[0].grid_cell_placement && (() => {
-                  const ad = previewAd.ads[0];
-                  const mediaUrl = ad.media_url || ad.image_url;
-                  const mediaType = ad.ad_type || ad.media_type || previewAd.type || '';
-                  if (!mediaUrl) return null;
-
-                  return (
-                    <div style={{
-                      position: 'absolute', bottom: '15%', left: '50%', transform: 'translateX(-50%)',
-                      maxWidth: '60%', maxHeight: '50%', zIndex: 2
-                    }}>
-                      {mediaType.includes('video') ? (
-                        <video src={mediaUrl} controls autoPlay muted style={{
-                          width: '100%', maxHeight: '100%', borderRadius: '8px',
-                          boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
-                        }}/>
-                      ) : (
-                        <img src={mediaUrl} alt="Ad preview" style={{
-                          width: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px',
-                          boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
-                        }}/>
-                      )}
                     </div>
                   );
                 })()}
