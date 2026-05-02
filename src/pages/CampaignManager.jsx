@@ -311,7 +311,8 @@ export default function CampaignManager() {
       stream_background_url: canvasBgImage,
       entrance_animation: ad.animType,
       animation_speed: ad.animSpeed,
-      grid_cell_placement: (ad.gridSelection || []).join(',')
+      grid_cell_placement: (ad.gridSelection || []).join(','),
+      plays_per_stream: 24
     }))
   });
 
@@ -350,7 +351,7 @@ export default function CampaignManager() {
     setShowSubmitModal(true)
   }
 
-  const handleModalConfirm = async ({ tier, exclusive, daysLive, frequency, estimatedCost }) => {
+  const handleModalConfirm = async ({ tier, exclusive, daysLive, frequency, estimatedCost, expectedPlays }) => {
     const payload = getCampaignPayload();
 
     try {
@@ -395,6 +396,7 @@ export default function CampaignManager() {
           frequency,
           estimated_cost: estimatedCost,
           brand_id: parseInt(currentAd.brand) || null,
+          expected_plays: expectedPlays || 0,
         })
       });
 
@@ -945,12 +947,13 @@ export default function CampaignManager() {
                   {ad.name}
                 </button>
               ))}
-              <button className="cm-add-ad-btn" onClick={addAd}>+</button>
+              {currentCampaignStatus === 'draft' && <button className="cm-add-ad-btn" onClick={addAd}>+</button>}
             </div>
 
-            <div className="cm-field">
-              <label className="cm-field-label">Brand</label>
-              <select className="cm-select" value={currentAd.brand} onChange={e=>updateAd({brand:e.target.value})} disabled={currentCampaignStatus !== 'draft'}>
+            <fieldset disabled={currentCampaignStatus !== 'draft'} style={{ border: 'none', margin: 0, padding: 0 }}>
+              <div className="cm-field">
+                <label className="cm-field-label">Brand</label>
+                <select className="cm-select" value={currentAd.brand} onChange={e=>updateAd({brand:e.target.value})}>
                 <option value="">Select a brand</option>
                 {availableBrands.map(b => (
                   <option key={b.id} value={b.id}>{b.brand_name}</option>
@@ -967,7 +970,7 @@ export default function CampaignManager() {
             <div className="cm-field">
               <label className="cm-field-label">Name visible to streamer</label>
               <input className="cm-input" placeholder="e.g. Summer Campaign"
-                value={currentAd.visibleName} onChange={e=>updateAd({visibleName:e.target.value})} disabled={currentCampaignStatus !== 'draft'}/>
+                value={currentAd.visibleName} onChange={e=>updateAd({visibleName:e.target.value})} />
             </div>
 
             <div className="cm-field">
@@ -1168,6 +1171,7 @@ export default function CampaignManager() {
                 </div>
               )}
             </div>
+            </fieldset>
 
           </div>{/* end settings */}
 

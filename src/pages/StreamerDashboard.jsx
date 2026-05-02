@@ -354,10 +354,20 @@ export default function StreamerDashboard() {
         const approvedCampaignSet = new Set((approvedData || []).map(a => a.campaign_id).filter(Boolean))
         const rejectedCampaignSet = new Set((rejectedData || []).map(r => r.campaign_id).filter(Boolean))
         
+        const seenCampaignIds = new Set()
+        const seenDisplayNames = new Set()
+
         mapped = mapped.filter(m => {
           const adName = m.ads?.[0]?.ad_name || m.campaignName || m.displayName.split(' — ')[1] || m.displayName
           if (approvedSet.has(adName) || rejectedSet.has(adName)) return false
           if (m.campaignId && (approvedCampaignSet.has(m.campaignId) || rejectedCampaignSet.has(String(m.campaignId)))) return false
+
+          if (m.campaignId && seenCampaignIds.has(m.campaignId)) return false
+          if (m.displayName && seenDisplayNames.has(m.displayName)) return false
+
+          if (m.campaignId) seenCampaignIds.add(m.campaignId)
+          if (m.displayName) seenDisplayNames.add(m.displayName)
+
           return true
         })
         

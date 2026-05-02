@@ -109,6 +109,29 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
 
   /* ── Local cost calculation (mirrors backend formula exactly) ── */
   const costBreakdown = useMemo(() => {
+    if (!tier) {
+      return {
+        baseCpm: 0,
+        avgViewers: 0,
+        playsPerStream: 0,
+        totalPlays: ads.length * 15,
+        exclusiveMultiplier: exclusive ? 2.5 : 1.0,
+        adBreakdowns: ads.map((ad, i) => ({
+          name: ad.visibleName || ad.name || `Ad ${i + 1}`,
+          type: ad.type,
+          gridCount: getGridCount(ad.gridSelection),
+          gridMult: GRID_MULT[Math.min(getGridCount(ad.gridSelection), 3)] || 1.0,
+          durationBucket: getClosestTimeBucket(ad.duration || 10),
+          timeMult: TIME_MULT[getClosestTimeBucket(ad.duration || 10)] || 1.0,
+          typeMult: TYPE_MULT[ad.type] || 1.0,
+          perPlay: 0,
+          plays: 15,
+          subtotal: 0,
+        })),
+        totalCost: 0,
+      }
+    }
+
     const baseCpm = tierInfo?.cpm || 45
     const avgViewers = tierInfo?.avgViewers || 12000
     const avgStreamMin = 240 // 4 hrs
@@ -118,7 +141,7 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
     const playsPerAd = Math.max(1, Math.floor(totalPlays / numAds))
 
     let totalCost = 0
-    const adBreakdowns = ads.map((ad, i) => {
+    const adSubtotals = ads.map((ad) => {
       const gridCount = getGridCount(ad.gridSelection)
       const gridMult = GRID_MULT[Math.min(gridCount, 3)] || 1.0
       const durationBucket = getClosestTimeBucket(ad.duration || 10)
@@ -130,6 +153,18 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
 
       totalCost += subtotal
 
+      return { perPlay, subtotal, gridCount, gridMult, durationBucket, timeMult, typeMult }
+    })
+
+    const excMult = exclusive ? 2.5 : 1.0
+    totalCost *= excMult
+
+    let totalExpectedPlays = 0
+    const adBreakdowns = ads.map((ad, i) => {
+      const { perPlay, subtotal, gridCount, gridMult, durationBucket, timeMult, typeMult } = adSubtotals[i]
+      const plays = perPlay > 0 ? Math.max(15, Math.floor(totalCost / perPlay)) : 15
+      totalExpectedPlays += plays
+
       return {
         name: ad.visibleName || ad.name || `Ad ${i + 1}`,
         type: ad.type,
@@ -139,19 +174,16 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
         timeMult,
         typeMult,
         perPlay: Math.round(perPlay * 100) / 100,
-        plays: playsPerAd,
+        plays,
         subtotal: Math.round(subtotal * 100) / 100,
       }
     })
-
-    const excMult = exclusive ? 2.5 : 1.0
-    totalCost *= excMult
 
     return {
       baseCpm,
       avgViewers,
       playsPerStream,
-      totalPlays,
+      totalPlays: totalExpectedPlays,
       exclusiveMultiplier: excMult,
       adBreakdowns,
       totalCost: Math.round(totalCost * 100) / 100,
@@ -166,7 +198,7 @@ export default function SubmitCampaignModal({ ads, campaignId, brandId, userId, 
     if (!tier) { toast.error('Please select a streamer tier'); return }
     if (days < 1) { toast.error('Duration must be at least 1 day'); return }
     if (budgetExceeded) { toast.error('Estimated cost exceeds brand budget. Please reduce scope or increase budget.'); return }
-    onConfirm({ tier, exclusive, daysLive: days, frequency, estimatedCost: costBreakdown.totalCost })
+    onConfirm({ tier, exclusive, daysLive: days, frequency, estimatedCost: costBreakdown.totalCost, expectedPlays: costBreakdown.totalPlays })
   }
 
   return (

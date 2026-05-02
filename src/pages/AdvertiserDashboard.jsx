@@ -968,7 +968,7 @@ export default function AdvertiserDashboard() {
                             <tr key={c.id} className="ad-table-row" onClick={() => navigate(`/campaign-manager/${id || 'demo-id'}`)}>
                               <td><span className="ad-table-name">{c.campaign_name}</span><span className="ad-table-id">{c.campaign_id}</span></td>
                               <td><StatusBadge status={c.status} /></td>
-                              <td><span className="ad-play-count">{c.play_count || 0}</span></td>
+                              <td><span className="ad-play-count">{c.expected_plays || c.play_count || 0}</span></td>
                               <td>{c.estimated_cost_rupees ? `₹${parseFloat(c.estimated_cost_rupees).toLocaleString('en-IN')}` : '—'}</td>
                               <td>{c.tier ? <TierBadge tier={c.tier} /> : '—'}</td>
                               <td className="ad-muted">{c.campaign_duration_days ? `${c.campaign_duration_days}d` : '—'}</td>
@@ -1250,7 +1250,7 @@ export default function AdvertiserDashboard() {
                               <span className="ad-table-id">{c.campaign_id}</span>
                             </td>
                             <td><StatusBadge status={c.status} /></td>
-                            <td><span className="ad-play-count">{c.play_count || 0}</span></td>
+                            <td><span className="ad-play-count">{c.expected_plays || c.play_count || 0}</span></td>
                             <td>
                               {c.estimated_cost_rupees
                                 ? `₹${parseFloat(c.estimated_cost_rupees).toLocaleString('en-IN')}`
