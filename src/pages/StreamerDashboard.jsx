@@ -320,12 +320,13 @@ export default function StreamerDashboard() {
         status: 'live',
         daysLeft: 0,
         earnings: '—',
+        amountPerPlay: ad.amount_per_play || 0,
         type: ad.ad_media_type || 'text',
         remaining_count: ad.remaining_count,
         approved_count: ad.approved_count,
         used_count: ad.used_count || 0,
-        ads: [] // no rich preview data from this endpoint
-      }))
+        ads: ad.ad_media_url ? [{ media_url: ad.ad_media_url, ad_type: ad.ad_media_type }] : []
+      })).sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
       if (mapped.length > 0) {
         setPlaylist(prev => {
           // Merge: keep non-backend items, add/replace backend items
@@ -367,20 +368,26 @@ export default function StreamerDashboard() {
     ]).then(([brandData, approvedData, rejectedData]) => {
       if (brandData && brandData.items) {
         let mapped = brandData.items.flatMap(brand => 
-          (brand.campaigns || []).map(camp => ({
-            id: `req_${camp.id || camp.campaign_id}`,
-            campaignId: camp.campaign_id || camp.id,
-            campaignName: camp.campaign_name || 'Unnamed Campaign',
-            brand: brand.brand_name,
-            displayName: `${brand.brand_name} — ${camp.campaign_name || 'Unnamed Campaign'}`,
-            tier: camp.tier || tier,
-            budgetRange: `₹${camp.estimated_cost_rupees || '0'}`,
-            daysLive: camp.campaign_duration_days || 7,
-            type: camp.ads && camp.ads.length > 0 ? camp.ads[0].ad_type : 'unknown',
-            approvedCount: camp.play_count || 10,
-            ads: camp.ads || []
-          }))
-        )
+          (brand.campaigns || []).map(camp => {
+            const budget = camp.estimated_cost_rupees || 0
+            const playCount = camp.play_count || 1
+            const amountPerPlay = budget / playCount
+            return {
+              id: `req_${camp.id || camp.campaign_id}`,
+              campaignId: camp.campaign_id || camp.id,
+              campaignName: camp.campaign_name || 'Unnamed Campaign',
+              brand: brand.brand_name,
+              displayName: `${brand.brand_name} — ${camp.campaign_name || 'Unnamed Campaign'}`,
+              tier: camp.tier || tier,
+              budgetRange: `₹${budget}`,
+              amountPerPlay: amountPerPlay,
+              daysLive: camp.campaign_duration_days || 7,
+              type: camp.ads && camp.ads.length > 0 ? camp.ads[0].ad_type : 'unknown',
+              approvedCount: camp.play_count || 10,
+              ads: camp.ads || []
+            }
+          })
+        ).sort((a, b) => b.amountPerPlay - a.amountPerPlay)
 
         const approvedSet = new Set((approvedData || []).map(a => a.ad_name))
         const rejectedSet = new Set((rejectedData || []).map(r => r.ad_name))
@@ -403,12 +410,13 @@ export default function StreamerDashboard() {
             status: ad.status === 'approved' ? 'live' : ad.status,
             daysLeft: 0,
             earnings: '—',
+            amountPerPlay: ad.amount_per_play || 0,
             type: ad.ad_media_type || 'text',
             remaining_count: ad.remaining_count,
             approved_count: ad.approved_count,
             used_count: ad.used_count || 0,
-            ads: []
-          }))
+            ads: ad.ad_media_url ? [{ media_url: ad.ad_media_url, ad_type: ad.ad_media_type }] : []
+          })).sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
           setPlaylist(mappedPlaylist)
         }
 
@@ -540,13 +548,29 @@ export default function StreamerDashboard() {
 
     const userId = user.id || user.uid || id
     
-    // Persist to backend
+    // Check for duplicates in playlist
     const adToApprove = req.ads?.[0]
+    const adName = adToApprove?.ad_name || req.campaignName || req.displayName.split(' — ')[1] || req.displayName
+    const isDuplicate = playlist.some(p => 
+      p.backendId === req.campaignId || 
+      p.name === adName
+    )
+    
+    if (isDuplicate) {
+      alert('This ad is already in your playlist!')
+      setAdRequests(p => p.filter(r => r.id !== reqId))
+      return
+    }
+
+    // Persist to backend
     if (adToApprove) {
       postApprovedAd(userId, {
         brand_name: req.brand,
-        ad_name: adToApprove.ad_name || req.campaignName || req.displayName.split(' — ')[1] || req.displayName,
-        approved_count: req.approvedCount
+        ad_name: adName,
+        approved_count: req.approvedCount,
+        amount_per_play: req.amountPerPlay,
+        ad_media_url: adToApprove.media_url,
+        ad_media_type: adToApprove.ad_type
       })
     }
 
@@ -562,9 +586,10 @@ export default function StreamerDashboard() {
         status: 'live', 
         daysLeft: req.daysLive, 
         earnings: '—', 
+        amountPerPlay: req.amountPerPlay,
         type: req.type,
         ads: req.ads
-      }]
+      }].sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
       setSecureItem(`streamer_playlist_${userId}_${user?.tier || 'Tier 5'}`, next)
       return next
     })
@@ -735,8 +760,8 @@ export default function StreamerDashboard() {
     setGoLiveStep(1)
   }
 
-  const liveAds     = playlist.filter(a => a.status === 'live')
-  const upcomingAds = playlist.filter(a => a.status === 'upcoming')
+  const liveAds     = playlist.filter(a => a.status === 'live' && (a.remaining_count === undefined || a.remaining_count > 0))
+  const upcomingAds = playlist.filter(a => a.status === 'upcoming' && (a.remaining_count === undefined || a.remaining_count > 0))
   const tierMeta    = TIER_META[user?.tier] || TIER_META['Tier 5']
 
   const step1Valid = streamTitle.trim() && streamLink.trim() && streamContent
@@ -960,20 +985,16 @@ export default function StreamerDashboard() {
                     <div className="sd-live-list">
                       {liveAds.map((ad, i) => {
                         const isPlaying = i === activeIndex
-                        const prog = progressMap[i] || 0
                         return (
                           <div key={ad.id} className={`sd-live-row ${isPlaying ? 'now-playing' : ''}`}>
                             <div className="sd-live-indicator-dot" style={{ background: isPlaying ? '#10B981' : '#e2e8f0' }}/>
                             <div className="sd-live-info">
                               <span className="sd-live-name">{ad.name}</span>
-                              <span className="sd-live-brand">{ad.brand} · {ad.duration}s · {ad.daysLeft}d left</span>
+                              <span className="sd-live-brand">
+                                {ad.brand} · {ad.type?.replace('_',' ')} · {ad.amountPerPlay > 0 ? `₹${ad.amountPerPlay.toFixed(2)}/play` : '—'}
+                              </span>
                             </div>
                             <span className="sd-live-earn">{ad.earnings}</span>
-                            {isPlaying && (
-                              <div className="sd-mini-progress">
-                                <div className="sd-mini-fill" style={{ width: `${prog}%` }}/>
-                              </div>
-                            )}
                             {isPlaying && <span className="sd-now-badge">● NOW</span>}
                           </div>
                         )
@@ -1013,7 +1034,7 @@ export default function StreamerDashboard() {
                 {[
                   { id: 'live',     label: 'Now Live',  count: liveAds.length },
                   { id: 'upcoming', label: 'Upcoming',  count: upcomingAds.length },
-                  { id: 'ended',    label: 'Ended',     count: playlist.filter(a=>a.status==='ended').length },
+                  { id: 'ended',    label: 'Ended',     count: playlist.filter(a => a.status === 'ended' || a.remaining_count === 0).length },
                 ].map(t => (
                   <button
                     key={t.id}
@@ -1027,47 +1048,47 @@ export default function StreamerDashboard() {
               </div>
 
               <div className="sd-card" style={{ marginTop: '0' }}>
-                {playlist.filter(a => a.status === playlistTab).length === 0 ? (
-                  <p className="sd-empty">No {playlistTab} ads.</p>
-                ) : (
-                  <div className="sd-playlist-list">
-                    {playlist.filter(a => a.status === playlistTab).map((ad, i) => {
-                      const isPlaying = playlistTab === 'live' && i === activeIndex
-                      const prog = progressMap[i] || 0
-                      const countdown = countdownMap[i]
-                      return (
-                        <div
-                          key={ad.id}
-                          className={`sd-playlist-row ${isPlaying ? 'now-playing' : ''}`}
-                          draggable={!isEditMode && playlistTab === 'live'}
-                          onDragStart={e => handleDragStart(e, ad.id)}
-                          onDragOver={e => e.preventDefault()}
-                          onDrop={e => handleDrop(e, ad.id)}
-                        >
-                          {isEditMode ? (
-                            <input type="checkbox" className="sd-checkbox"
-                              checked={checkedIds.includes(ad.id)}
-                              onChange={e => setCheckedIds(prev =>
-                                e.target.checked ? [...prev, ad.id] : prev.filter(x => x !== ad.id)
-                              )}/>
-                          ) : (
-                            playlistTab === 'live' && <span className="sd-drag-handle">⠿</span>
-                          )}
+                {(() => {
+                  const items = playlistTab === 'live' ? liveAds 
+                              : playlistTab === 'upcoming' ? upcomingAds
+                              : playlist.filter(a => a.status === 'ended' || a.remaining_count === 0)
+
+                  if (items.length === 0) {
+                    return <p className="sd-empty">No {playlistTab} ads.</p>
+                  }
+
+                  return (
+                    <div className="sd-playlist-list">
+                      {items.map((ad, i) => {
+                        const isPlaying = playlistTab === 'live' && i === activeIndex
+                        return (
+                          <div
+                            key={ad.id}
+                            className={`sd-playlist-row ${isPlaying ? 'now-playing' : ''}`}
+                            draggable={!isEditMode && playlistTab === 'live'}
+                            onDragStart={e => handleDragStart(e, ad.id)}
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={e => handleDrop(e, ad.id)}
+                          >
+                            {isEditMode ? (
+                              <input type="checkbox" className="sd-checkbox"
+                                checked={checkedIds.includes(ad.id)}
+                                onChange={e => setCheckedIds(prev =>
+                                  e.target.checked ? [...prev, ad.id] : prev.filter(x => x !== ad.id)
+                                )}/>
+                            ) : (
+                              playlistTab === 'live' && <span className="sd-drag-handle">⠿</span>
+                            )}
+
                           <div className="sd-pl-info">
                             <span className="sd-pl-name">{ad.name}</span>
                             <span className="sd-pl-meta">
-                              {ad.brand} · {ad.type?.replace('_',' ')} · {ad.duration}s
+                              {ad.brand} · {ad.type?.replace('_',' ')}
+                              {ad.amountPerPlay > 0 && ` · ₹${ad.amountPerPlay.toFixed(2)} / play`}
                               {ad.remaining_count != null && ` · ${ad.remaining_count}/${ad.approved_count} remaining`}
                             </span>
                           </div>
                           <div className="sd-pl-right">
-                            {/* Countdown or NOW badge */}
-                            {playlistTab === 'live' && isPlaying && (
-                              <span className="sd-now-badge">▶ NOW</span>
-                            )}
-                            {playlistTab === 'live' && !isPlaying && countdown != null && countdown > 0 && (
-                              <span className="sd-countdown-badge">in {countdown}s</span>
-                            )}
                             {ad.status === 'upcoming' && (
                               <span className="sd-days-badge blue">Starts in {ad.daysLeft}d</span>
                             )}
@@ -1080,29 +1101,12 @@ export default function StreamerDashboard() {
                               Preview
                             </button>
                           </div>
-                          {/* Progress bar for playing ad */}
-                          {isPlaying && (
-                            <div className="sd-progress-bar">
-                              <div className="sd-progress-fill" style={{ width: `${prog}%` }}/>
-                            </div>
-                          )}
-                          {/* Thin countdown bar for waiting ads */}
-                          {playlistTab === 'live' && !isPlaying && countdown != null && countdown > 0 && (() => {
-                            const gap = Number(gapInput)
-                            let totalCycle = 0
-                            liveAds.forEach(a => { totalCycle += a.duration + gap })
-                            const waitPct = Math.max(0, 100 - (countdown / totalCycle) * 100)
-                            return (
-                              <div className="sd-progress-bar sd-progress-bar-waiting">
-                                <div className="sd-progress-fill sd-progress-fill-waiting" style={{ width: `${waitPct}%` }}/>
-                              </div>
-                            )
-                          })()}
                         </div>
                       )
                     })}
                   </div>
-                )}
+                )
+              })()}
               </div>
             </div>
           )}
@@ -1215,7 +1219,9 @@ export default function StreamerDashboard() {
                           <div className="sd-request-info">
                             <span className="sd-request-name">{req.displayName}</span>
                             <span className="sd-request-meta">
-                              {req.tier} · {req.budgetRange} · {req.daysLive} days · {req.type?.replace('_',' ')} · {req.approvedCount} plays
+                              {req.tier} · {req.budgetRange}
+                              {req.amountPerPlay > 0 && ` (₹${req.amountPerPlay.toFixed(2)}/play)`}
+                              {` · ${req.daysLive} days · ${req.type?.replace('_',' ')} · ${req.approvedCount} plays`}
                             </span>
                           </div>
                           <div className="sd-request-btns">
