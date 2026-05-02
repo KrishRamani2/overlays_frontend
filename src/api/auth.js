@@ -297,3 +297,18 @@ export async function updateApprovedAd(streamerId, adId, adData) {
     return null
   }
 }
+
+export async function startStreamSession(payload) {
+  try {
+    const res = await fetch(`${STREAMER_BASE}/api/streamer/streams/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    if (!res.ok) throw new Error('Failed to start stream session')
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}

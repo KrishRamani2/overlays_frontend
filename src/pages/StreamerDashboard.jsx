@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd } from '../api/auth'
+import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd, startStreamSession } from '../api/auth'
 import { useParams, useNavigate } from 'react-router-dom'
 import { setSecureItem, getSecureItem, removeSecureItem } from '../utils/secureStorage'
 import './StreamerDashboard.css'
@@ -186,6 +186,9 @@ export default function StreamerDashboard() {
   const [restrictedPositions,setRestrictedPositions] = useState([])
   const [savedPrefs,         setSavedPrefs]          = useState(DUMMY_SAVED_PREFS)
   const [activePrefId,       setActivePrefId]        = useState(null)
+  const [streamAdOrder,      setStreamAdOrder]       = useState([])
+  const [showAdPicker,       setShowAdPicker]        = useState(false)
+  const [selectedStreamAds,  setSelectedStreamAds]   = useState([])
   const [newPrefName,        setNewPrefName]         = useState('')
   const [posStatus,          setPosStatus]           = useState('')
   const [overlayLink,        setOverlayLink]         = useState('')
@@ -360,6 +363,10 @@ export default function StreamerDashboard() {
     
     const cachedRejected = getSecureItem(rejectedKey)
     if (cachedRejected) setRejectedAds(cachedRejected)
+
+    // Load cached stream ad selection
+    const cachedStreamAds = getSecureItem(`streamer_stream_ads_${userId}`)
+    if (cachedStreamAds) setSelectedStreamAds(cachedStreamAds)
 
     Promise.all([
       fetchTierBrands(tier),
@@ -750,6 +757,23 @@ export default function StreamerDashboard() {
     setStreamStartTime(Date.now())
     setAdsAiredCount(0)
     setStreamElapsed(0)
+
+    const userId = user?.id || user?.uid || id;
+    const overlaySetup = activePrefId 
+      ? savedPrefs.find(p => p.id === activePrefId) 
+      : { positions: selectedPositions, gap: gapInput, adsEnabled };
+    
+    startStreamSession({
+      streamer_id: userId,
+      live_stream_url: streamLink,
+      total_ads_approved: streamAdOrder.length,
+      notes: JSON.stringify({
+        streamTitle,
+        streamContent,
+        overlaySetup,
+        adOrder: streamAdOrder.map(ad => ad.id)
+      })
+    })
   }
 
   const endStream = () => {
@@ -1490,7 +1514,14 @@ export default function StreamerDashboard() {
                         <button
                           className="sd-btn-primary"
                           disabled={!step1Valid}
-                          onClick={() => setGoLiveStep(2)}
+                          onClick={() => {
+                            const link = streamLink.toLowerCase()
+                            if (!link.includes('youtube.com') && !link.includes('youtu.be')) {
+                              alert('Please enter a valid YouTube stream link.')
+                              return
+                            }
+                            setGoLiveStep(2)
+                          }}
                           style={{ opacity: step1Valid ? 1 : 0.45 }}
                         >
                           Next → Overlay preset
@@ -1593,9 +1624,33 @@ export default function StreamerDashboard() {
                         {posStatus && <span className="sd-saved-msg">{posStatus}</span>}
                       </div>
 
+                      {/* Find matching ads button */}
+                      {selectedPositions.length > 0 && (
+                        <div style={{ margin: '1.25rem 0' }}>
+                          <button 
+                            className="sd-btn-primary" 
+                            style={{ width: '100%' }}
+                            onClick={() => setShowAdPicker(true)}
+                          >
+                            🔍 Find ads matching {selectedPositions.length} selected position{selectedPositions.length !== 1 ? 's' : ''}
+                          </button>
+                          {selectedStreamAds.length > 0 && (
+                            <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '10px', fontSize: '0.82rem', color: '#059669', fontWeight: 500 }}>
+                              ✓ {selectedStreamAds.length} ad{selectedStreamAds.length !== 1 ? 's' : ''} selected for this stream
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="sd-step-actions">
                         <button className="sd-btn-ghost" onClick={() => setGoLiveStep(1)}>← Back</button>
-                        <button className="sd-btn-primary" onClick={() => setGoLiveStep(3)}>
+                        <button className="sd-btn-primary" onClick={() => {
+                          const userId = user?.id || user?.uid || id
+                          const cached = selectedStreamAds.length > 0 ? selectedStreamAds : liveAds
+                          setStreamAdOrder(cached)
+                          setSecureItem(`streamer_stream_ads_${userId}`, cached)
+                          setGoLiveStep(3)
+                        }}>
                           Next → Confirm
                         </button>
                       </div>
@@ -1635,6 +1690,20 @@ export default function StreamerDashboard() {
                             }
                           </span>
                         </div>
+                        <div className="sd-confirm-row">
+                          <span className="sd-confirm-label">Positions</span>
+                          <span className="sd-confirm-val" style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                            {selectedPositions.map(p => (
+                              <span key={p} className="sd-pref-pos-chip">{p.replace(/_/g, ' ')}</span>
+                            ))}
+                          </span>
+                        </div>
+                        <div className="sd-confirm-row">
+                          <span className="sd-confirm-label">Ads selected</span>
+                          <span className="sd-confirm-val" style={{ fontWeight: 600, color: streamAdOrder.length > 0 ? '#059669' : '#EF4444' }}>
+                            {streamAdOrder.length} ad{streamAdOrder.length !== 1 ? 's' : ''} for this stream
+                          </span>
+                        </div>
                       </div>
 
                       {/* OBS link */}
@@ -1648,14 +1717,38 @@ export default function StreamerDashboard() {
 
                       {/* Brands in this stream */}
                       <div className="sd-eyebrow" style={{ marginBottom:'0.75rem' }}>Brands running during this stream</div>
-                      {liveAds.length === 0 && upcomingAds.length === 0 ? (
+                      <p className="sd-step-hint" style={{ marginBottom: '1rem' }}>Drag to reorder the sequence of ads for this stream.</p>
+                      {streamAdOrder.length === 0 ? (
                         <p className="sd-empty">No active brand campaigns at the moment.</p>
                       ) : (
                         <div className="sd-confirm-brands">
-                          {[...liveAds, ...upcomingAds].map(ad => {
+                          {streamAdOrder.map((ad, i) => {
                             const brand = DUMMY_BRANDS.find(b => b.name === ad.brand)
                             return (
-                              <div key={ad.id} className="sd-confirm-brand-row">
+                              <div 
+                                key={ad.id} 
+                                className="sd-confirm-brand-row"
+                                draggable
+                                onDragStart={e => handleDragStart(e, ad.id)}
+                                onDragOver={e => e.preventDefault()}
+                                onDrop={e => {
+                                  e.stopPropagation()
+                                  const fromId = draggedRef.current
+                                  const toId = ad.id
+                                  if (fromId === toId) return
+                                  setStreamAdOrder(p => {
+                                    const fromIndex = p.findIndex(x => x.id === fromId)
+                                    const toIndex = p.findIndex(x => x.id === toId)
+                                    if (fromIndex === -1 || toIndex === -1) return p
+                                    const next = [...p]
+                                    const [item] = next.splice(fromIndex, 1)
+                                    next.splice(toIndex, 0, item)
+                                    return next
+                                  })
+                                }}
+                                style={{ cursor: 'grab' }}
+                              >
+                                <span className="sd-drag-handle" style={{ marginRight: '0.75rem', color: '#94a3b8' }}>⠿</span>
                                 <div className="sd-brand-logo-sm" style={{ background: brand?.color || '#3B5BFF', color:'white' }}>
                                   {ad.brand[0]}
                                 </div>
@@ -1905,8 +1998,8 @@ export default function StreamerDashboard() {
                   <div className="sd-sim-progress"><div className="sd-sim-dot"/></div>
                 </div>
 
-                {/* Actual Ad Overlay Preview - High Fidelity (1920x1080 mapped via CSS percentages) */}
-                {previewAd?.ads && previewAd.ads.length > 0 && (() => {
+                {/* Full ad overlay preview (from incoming requests with full ad data) */}
+                {previewAd?.ads && previewAd.ads.length > 0 && previewAd.ads[0].grid_cell_placement && (() => {
                   const ad = previewAd.ads[0];
                   const allowedCells = ad.grid_cell_placement ? ad.grid_cell_placement.split(',').map(Number) : [6,7,8];
                   const bounds = getGridBounds(allowedCells);
@@ -1983,12 +2076,142 @@ export default function StreamerDashboard() {
                     </div>
                   );
                 })()}
+
+                {/* Simple media preview fallback (for approved playlist ads with only media_url) */}
+                {previewAd?.ads && previewAd.ads.length > 0 && !previewAd.ads[0].grid_cell_placement && (() => {
+                  const ad = previewAd.ads[0];
+                  const mediaUrl = ad.media_url || ad.image_url;
+                  const mediaType = ad.ad_type || ad.media_type || previewAd.type || '';
+                  if (!mediaUrl) return null;
+
+                  return (
+                    <div style={{
+                      position: 'absolute', bottom: '15%', left: '50%', transform: 'translateX(-50%)',
+                      maxWidth: '60%', maxHeight: '50%', zIndex: 2
+                    }}>
+                      {mediaType.includes('video') ? (
+                        <video src={mediaUrl} controls autoPlay muted style={{
+                          width: '100%', maxHeight: '100%', borderRadius: '8px',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+                        }}/>
+                      ) : (
+                        <img src={mediaUrl} alt="Ad preview" style={{
+                          width: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+                        }}/>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
-            <div className="sd-modal-footer" style={{ padding: '1.5rem 1.75rem', borderTop: '1px solid var(--border)', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button className="sd-btn-ghost" onClick={() => setPreviewOpen(false)}>Close</button>
-              <button className="sd-btn-danger-sm" style={{ padding: '0.6rem 1.3rem' }} onClick={() => { rejectRequest(previewAd.id); setPreviewOpen(false); }}>Reject</button>
-              <button className="sd-btn-primary" onClick={() => { approveRequest(previewAd.id, previewAd.campaignId); setPreviewOpen(false); }}>Approve Request</button>
+
+            {/* Adaptive footer: show approve/reject for requests, just close for playlist */}
+            {previewAd?.id?.startsWith?.('req_') ? (
+              <div className="sd-modal-footer" style={{ padding: '1.5rem 1.75rem', borderTop: '1px solid var(--border)', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button className="sd-btn-ghost" onClick={() => setPreviewOpen(false)}>Close</button>
+                <button className="sd-btn-danger-sm" style={{ padding: '0.6rem 1.3rem' }} onClick={() => { rejectRequest(previewAd.id); setPreviewOpen(false); }}>Reject</button>
+                <button className="sd-btn-primary" onClick={() => { approveRequest(previewAd.id, previewAd.campaignId); setPreviewOpen(false); }}>Approve Request</button>
+              </div>
+            ) : (
+              <div className="sd-modal-footer" style={{ padding: '1.25rem 1.75rem', borderTop: '1px solid var(--border)', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button className="sd-btn-ghost" onClick={() => setPreviewOpen(false)}>Close</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── AD PICKER MODAL ── */}
+      {showAdPicker && (
+        <div className="sd-modal-overlay" onClick={() => setShowAdPicker(false)}>
+          <div className="sd-modal sd-modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="sd-modal-head">
+              <div>
+                <div className="sd-eyebrow">Select Ads</div>
+                <h3 className="sd-modal-title">Ads matching your grid positions</h3>
+                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  {selectedPositions.map(p => (
+                    <span key={p} className="sd-pref-pos-chip">{p.replace(/_/g, ' ')}</span>
+                  ))}
+                </div>
+              </div>
+              <button className="sd-modal-close" onClick={() => setShowAdPicker(false)}>✕</button>
+            </div>
+            <div style={{ padding: '1.25rem 1.75rem', maxHeight: '50vh', overflowY: 'auto' }}>
+              {(() => {
+                const posIndices = selectedPositions.map(p => ALL_POSITIONS.indexOf(p)).filter(i => i >= 0)
+                const matchingAds = liveAds.filter(ad => {
+                  const adGrids = ad.ads?.[0]?.grid_cell_placement
+                    ? ad.ads[0].grid_cell_placement.split(',').map(Number)
+                    : ad.ads?.[0]?.grid_selection || []
+                  // Only show ads that have grid data AND overlap with selected positions
+                  if (!adGrids || adGrids.length === 0) return false
+                  return adGrids.some(g => posIndices.includes(g))
+                })
+
+                if (matchingAds.length === 0) {
+                  return <p className="sd-empty">No approved ads match your selected grid positions.</p>
+                }
+
+                return matchingAds.map(ad => {
+                  const isSelected = selectedStreamAds.some(s => s.id === ad.id)
+                  const brand = DUMMY_BRANDS.find(b => b.name === ad.brand)
+                  return (
+                    <div key={ad.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '0.75rem',
+                      padding: '0.85rem 1rem', marginBottom: '0.5rem',
+                      borderRadius: '10px',
+                      border: isSelected ? '2px solid #3B5BFF' : '1px solid var(--border)',
+                      background: isSelected ? '#EEF2FF' : 'white',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }} onClick={() => {
+                      setSelectedStreamAds(prev => {
+                        if (isSelected) return prev.filter(s => s.id !== ad.id)
+                        return [...prev, ad]
+                      })
+                    }}>
+                      <div style={{
+                        width: '20px', height: '20px', borderRadius: '4px',
+                        border: isSelected ? '2px solid #3B5BFF' : '2px solid #CBD5E1',
+                        background: isSelected ? '#3B5BFF' : 'white',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0, transition: 'all 0.15s'
+                      }}>
+                        {isSelected && <span style={{ color: 'white', fontSize: '0.7rem', fontWeight: 700 }}>✓</span>}
+                      </div>
+                      <div className="sd-brand-logo-sm" style={{ background: brand?.color || '#3B5BFF', color: 'white' }}>
+                        {ad.brand?.[0] || '?'}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 500, color: 'var(--ink)' }}>{ad.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                          {ad.brand} · {ad.duration}s · {ad.type?.replace('_', ' ')}
+                          {ad.amountPerPlay > 0 && ` · ₹${ad.amountPerPlay.toFixed(2)} / play`}
+                          {ad.remaining_count != null && ` · ${ad.remaining_count} remaining`}
+                        </div>
+                      </div>
+                      <StatusBadge status={ad.status} />
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+            <div style={{ padding: '1.25rem 1.75rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
+                {selectedStreamAds.length} ad{selectedStreamAds.length !== 1 ? 's' : ''} selected
+              </span>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button className="sd-btn-ghost" onClick={() => setSelectedStreamAds([])}>Clear all</button>
+                <button className="sd-btn-primary" onClick={() => {
+                  const userId = user?.id || user?.uid || id
+                  setSecureItem(`streamer_stream_ads_${userId}`, selectedStreamAds)
+                  setShowAdPicker(false)
+                }}>
+                  Confirm selection
+                </button>
+              </div>
             </div>
           </div>
         </div>
