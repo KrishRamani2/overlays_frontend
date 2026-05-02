@@ -776,7 +776,7 @@ export default function StreamerDashboard() {
         gap: gapInput,
         adsEnabled: adsEnabled
       },
-      selected_ads: streamAdOrder.map(ad => ({
+      selected_ads: selectedStreamAds.map(ad => ({
         id: ad.id,
         backendId: ad.backendId,
         campaignId: ad.campaignId,
@@ -787,8 +787,8 @@ export default function StreamerDashboard() {
         amountPerPlay: ad.amountPerPlay,
         gridSelection: ad.gridSelection || []
       })),
-      total_ads_approved: streamAdOrder.length,
-      ads_left_count: streamAdOrder.length
+      total_ads_approved: selectedStreamAds.length,
+      ads_left_count: selectedStreamAds.length
     })
   }
 
@@ -1661,10 +1661,13 @@ export default function StreamerDashboard() {
                       <div className="sd-step-actions">
                         <button className="sd-btn-ghost" onClick={() => setGoLiveStep(1)}>← Back</button>
                         <button className="sd-btn-primary" onClick={() => {
+                          if (selectedStreamAds.length === 0) {
+                            alert('Please select matching ads for this stream before continuing.')
+                            return
+                          }
                           const userId = user?.id || user?.uid || id
-                          const cached = selectedStreamAds.length > 0 ? selectedStreamAds : liveAds
-                          setStreamAdOrder(cached)
-                          setSecureItem(`streamer_stream_ads_${userId}`, cached)
+                          setStreamAdOrder(selectedStreamAds)
+                          setSecureItem(`streamer_stream_ads_${userId}`, selectedStreamAds)
                           setGoLiveStep(3)
                         }}>
                           Next → Confirm
@@ -1716,8 +1719,8 @@ export default function StreamerDashboard() {
                         </div>
                         <div className="sd-confirm-row">
                           <span className="sd-confirm-label">Ads selected</span>
-                          <span className="sd-confirm-val" style={{ fontWeight: 600, color: streamAdOrder.length > 0 ? '#059669' : '#EF4444' }}>
-                            {streamAdOrder.length} ad{streamAdOrder.length !== 1 ? 's' : ''} for this stream
+                          <span className="sd-confirm-val" style={{ fontWeight: 600, color: selectedStreamAds.length > 0 ? '#059669' : '#EF4444' }}>
+                            {selectedStreamAds.length} ad{selectedStreamAds.length !== 1 ? 's' : ''} for this stream
                           </span>
                         </div>
                       </div>
@@ -1734,11 +1737,11 @@ export default function StreamerDashboard() {
                       {/* Brands in this stream */}
                       <div className="sd-eyebrow" style={{ marginBottom:'0.75rem' }}>Brands running during this stream</div>
                       <p className="sd-step-hint" style={{ marginBottom: '1rem' }}>Drag to reorder the sequence of ads for this stream.</p>
-                      {streamAdOrder.length === 0 ? (
+                      {selectedStreamAds.length === 0 ? (
                         <p className="sd-empty">No active brand campaigns at the moment.</p>
                       ) : (
                         <div className="sd-confirm-brands">
-                          {streamAdOrder.map((ad, i) => {
+                          {selectedStreamAds.map((ad, i) => {
                             const brand = DUMMY_BRANDS.find(b => b.name === ad.brand)
                             return (
                               <div 
@@ -1752,7 +1755,7 @@ export default function StreamerDashboard() {
                                   const fromId = draggedRef.current
                                   const toId = ad.id
                                   if (fromId === toId) return
-                                  setStreamAdOrder(p => {
+                                  setSelectedStreamAds(p => {
                                     const fromIndex = p.findIndex(x => x.id === fromId)
                                     const toIndex = p.findIndex(x => x.id === toId)
                                     if (fromIndex === -1 || toIndex === -1) return p
