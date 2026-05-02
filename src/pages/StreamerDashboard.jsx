@@ -299,50 +299,7 @@ export default function StreamerDashboard() {
     }
   }, [navigate])
 
-  /* ── Approved Ads (playlist) from backend ── */
-  useEffect(() => {
-    if (!user || DEV_MODE) return
-    const userId = user.id || user.uid || id
-    if (!userId) return
-
-    fetchApprovedAds(userId).then(data => {
-      if (!Array.isArray(data) || data.length === 0) return
-      // Deduplicate by id, keep only remaining_count > 0
-      const seen = new Set()
-      const unique = data.filter(ad => {
-        if (seen.has(ad.id) || (ad.remaining_count ?? 0) <= 0) return false
-        seen.add(ad.id)
-        return true
-      })
-      const mapped = unique.map(ad => ({
-        id: `approved_${ad.id}`,
-        backendId: ad.id,
-        name: ad.ad_name,
-        brand: ad.brand_name,
-        duration: 10, // default display duration in seconds
-        status: 'live',
-        daysLeft: 0,
-        earnings: '—',
-        amountPerPlay: ad.amount_per_play || 0,
-        type: ad.ad_media_type || 'text',
-        remaining_count: ad.remaining_count,
-        approved_count: ad.approved_count,
-        used_count: ad.used_count || 0,
-        ads: ad.ad_media_url ? [{ media_url: ad.ad_media_url, ad_type: ad.ad_media_type }] : []
-      })).sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
-      if (mapped.length > 0) {
-        setPlaylist(prev => {
-          // Merge: keep non-backend items, add/replace backend items
-          const nonBackend = prev.filter(p => !p.id?.startsWith('approved_'))
-          const next = [...nonBackend, ...mapped]
-          setSecureItem(`streamer_playlist_${userId}`, next)
-          return next
-        })
-      }
-    }).catch(err => console.error("Failed to fetch approved ads", err))
-  }, [user, id])
-
-  /* ── Ad Requests Fetching & Caching ── */
+  /* ── Ad Requests + Approved/Rejected from backend (single source of truth) ── */
   useEffect(() => {
     if (!user || DEV_MODE) return
 
@@ -350,14 +307,10 @@ export default function StreamerDashboard() {
     if (!userId) return
 
     const tier = user?.tier || 'Tier 5'
-    const reqKey = `streamer_ad_requests_v3_${userId}_${tier}`
     const playlistKey = `streamer_playlist_${userId}`
     const rejectedKey = `streamer_rejected_${userId}`
 
-    // Load from cache first
-    const cachedReq = getSecureItem(reqKey)
-    if (cachedReq) setAdRequests(cachedReq)
-    
+    // Load from cache first for instant UI
     const cachedPlaylist = getSecureItem(playlistKey)
     if (cachedPlaylist) setPlaylist(cachedPlaylist)
     
@@ -398,22 +351,26 @@ export default function StreamerDashboard() {
 
         const approvedSet = new Set((approvedData || []).map(a => a.ad_name))
         const rejectedSet = new Set((rejectedData || []).map(r => r.ad_name))
+        const approvedCampaignSet = new Set((approvedData || []).map(a => a.campaign_id).filter(Boolean))
+        const rejectedCampaignSet = new Set((rejectedData || []).map(r => r.campaign_id).filter(Boolean))
         
         mapped = mapped.filter(m => {
           const adName = m.ads?.[0]?.ad_name || m.campaignName || m.displayName.split(' — ')[1] || m.displayName
-          return !approvedSet.has(adName) && !rejectedSet.has(adName)
+          if (approvedSet.has(adName) || rejectedSet.has(adName)) return false
+          if (m.campaignId && (approvedCampaignSet.has(m.campaignId) || rejectedCampaignSet.has(String(m.campaignId)))) return false
+          return true
         })
         
         setAdRequests(mapped)
-        setSecureItem(reqKey, mapped)
 
         if (approvedData) {
           const mappedPlaylist = approvedData.map(ad => ({
             id: `approved_${ad.id}`,
             backendId: ad.id,
+            campaignId: ad.campaign_id,
             name: ad.ad_name,
             brand: ad.brand_name,
-            duration: 10,
+            duration: ad.show_duration || 10,
             status: ad.status === 'approved' ? 'live' : ad.status,
             daysLeft: 0,
             earnings: '—',
@@ -422,7 +379,8 @@ export default function StreamerDashboard() {
             remaining_count: ad.remaining_count,
             approved_count: ad.approved_count,
             used_count: ad.used_count || 0,
-            ads: ad.ad_media_url ? [{ media_url: ad.ad_media_url, ad_type: ad.ad_media_type }] : []
+            gridSelection: ad.grid_selection || [],
+            ads: ad.ad_media_url ? [{ media_url: ad.ad_media_url, ad_type: ad.ad_media_type, grid_selection: ad.grid_selection }] : []
           })).sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
           setPlaylist(mappedPlaylist)
         }
@@ -548,7 +506,7 @@ export default function StreamerDashboard() {
   const stopSync = () => clearInterval(syncRef.current)
 
   /* ── Actions ── */
-  const approveRequest = (reqId, campaignId) => {
+  const approveRequest = async (reqId, campaignId) => {
     if (!window.confirm('Approve this ad request?')) return
     const req = adRequests.find(r => r.id === reqId)
     if (!req) return
@@ -560,7 +518,8 @@ export default function StreamerDashboard() {
     const adName = adToApprove?.ad_name || req.campaignName || req.displayName.split(' — ')[1] || req.displayName
     const isDuplicate = playlist.some(p => 
       p.backendId === req.campaignId || 
-      p.name === adName
+      p.name === adName ||
+      p.campaignId === req.campaignId
     )
     
     if (isDuplicate) {
@@ -569,69 +528,99 @@ export default function StreamerDashboard() {
       return
     }
 
-    // Persist to backend
+    // Persist to backend FIRST — await so the DB write completes
+    let backendAd = null
     if (adToApprove) {
-      postApprovedAd(userId, {
+      backendAd = await postApprovedAd(userId, {
         brand_name: req.brand,
         ad_name: adName,
+        campaign_id: req.campaignId,
         approved_count: req.approvedCount,
+        remaining_count: req.approvedCount,
         amount_per_play: req.amountPerPlay,
         ad_media_url: adToApprove.media_url,
-        ad_media_type: adToApprove.ad_type
+        ad_media_type: adToApprove.ad_type,
+        grid_selection: adToApprove.grid_cell_placement
+          ? adToApprove.grid_cell_placement.split(',').map(Number)
+          : [],
+        show_duration: adToApprove.duration_seconds || 15
       })
+
+      if (!backendAd) {
+        alert('Failed to save to database. Please try again.')
+        return
+      }
     }
 
-    setAdRequests(p => {
-      const next = p.filter(r => r.id !== reqId)
-      setSecureItem(`streamer_ad_requests_v3_${userId}_${user?.tier || 'Tier 5'}`, next)
-      return next
-    })
+    // Remove from incoming requests (UI only — DB is source of truth on refresh)
+    setAdRequests(p => p.filter(r => r.id !== reqId))
+
+    // Add to playlist
     setPlaylist(p => {
       const next = [...p, {
-        id: campaignId, name: req.displayName, brand: req.brand,
+        id: backendAd ? `approved_${backendAd.id}` : campaignId,
+        backendId: backendAd?.id,
+        name: adName,
+        brand: req.brand,
+        campaignId: req.campaignId,
         duration: adToApprove?.duration_seconds || 15, 
         status: 'live', 
         daysLeft: req.daysLive, 
         earnings: '—', 
         amountPerPlay: req.amountPerPlay,
         type: req.type,
+        remaining_count: req.approvedCount,
+        approved_count: req.approvedCount,
+        used_count: 0,
+        gridSelection: adToApprove?.grid_cell_placement
+          ? adToApprove.grid_cell_placement.split(',').map(Number)
+          : [],
         ads: req.ads
       }].sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
-      setSecureItem(`streamer_playlist_${userId}_${user?.tier || 'Tier 5'}`, next)
+      
+      // Update cache immediately
+      setSecureItem(`streamer_playlist_${userId}`, next)
       return next
     })
   }
 
-  const rejectRequest = (reqId) => {
+  const rejectRequest = async (reqId) => {
     if (!window.confirm('Reject this ad request?')) return
     const req = adRequests.find(r => r.id === reqId)
     if (!req) return
     const userId = user?.id || user?.uid || id
     
-    // Persist to backend
+    // Persist to backend FIRST
     const adToReject = req.ads?.[0]
     const adName = adToReject?.ad_name || req.campaignName || req.displayName.split(' — ')[1] || req.displayName
     
-    postRejectedAd(userId, {
+    const newRej = await postRejectedAd(userId, {
       brand_name: req.brand,
       ad_name: adName,
+      campaign_id: req.campaignId,
       status: 'rejected'
-    }).then(newRej => {
-      if (newRej) {
-        setRejectedAds(p => [{
-          ...newRej,
-          name: newRej.ad_name || 'Unnamed Ad',
-          brand: newRej.brand_name || 'Unknown Brand',
-          reason: 'Rejected by streamer'
-        }, ...p])
-      }
     })
 
-    setAdRequests(p => {
-      const next = p.filter(r => r.id !== reqId)
-      setSecureItem(`streamer_ad_requests_v3_${userId}_${user?.tier || 'Tier 5'}`, next)
+    if (!newRej) {
+      alert('Failed to save rejection. Please try again.')
+      return
+    }
+
+    // Update UI
+    const rejectedEntry = {
+      ...newRej,
+      name: newRej.ad_name || 'Unnamed Ad',
+      brand: newRej.brand_name || 'Unknown Brand',
+      reason: 'Rejected by streamer'
+    }
+    
+    setRejectedAds(p => {
+      const next = [rejectedEntry, ...p]
+      setSecureItem(`streamer_rejected_${userId}`, next)
       return next
     })
+
+    setAdRequests(p => p.filter(r => r.id !== reqId))
   }
 
   const approveRejectedAd = (ad) => {
@@ -766,13 +755,30 @@ export default function StreamerDashboard() {
     startStreamSession({
       streamer_id: userId,
       live_stream_url: streamLink,
+      stream_title: streamTitle,
+      stream_content: streamContent,
+      obs_overlay_link: overlayLink,
+      overlay_config: {
+        presetId: activePrefId,
+        presetName: activePrefId ? savedPrefs.find(p => p.id === activePrefId)?.name : 'Custom',
+        positions: selectedPositions,
+        restrictedPositions: restrictedPositions,
+        gap: gapInput,
+        adsEnabled: adsEnabled
+      },
+      selected_ads: streamAdOrder.map(ad => ({
+        id: ad.id,
+        backendId: ad.backendId,
+        campaignId: ad.campaignId,
+        name: ad.name,
+        brand: ad.brand,
+        type: ad.type,
+        duration: ad.duration,
+        amountPerPlay: ad.amountPerPlay,
+        gridSelection: ad.gridSelection || []
+      })),
       total_ads_approved: streamAdOrder.length,
-      notes: JSON.stringify({
-        streamTitle,
-        streamContent,
-        overlaySetup,
-        adOrder: streamAdOrder.map(ad => ad.id)
-      })
+      ads_left_count: streamAdOrder.length
     })
   }
 
@@ -2142,9 +2148,14 @@ export default function StreamerDashboard() {
               {(() => {
                 const posIndices = selectedPositions.map(p => ALL_POSITIONS.indexOf(p)).filter(i => i >= 0)
                 const matchingAds = liveAds.filter(ad => {
-                  const adGrids = ad.ads?.[0]?.grid_cell_placement
-                    ? ad.ads[0].grid_cell_placement.split(',').map(Number)
-                    : ad.ads?.[0]?.grid_selection || []
+                  // Check all possible grid data sources
+                  let adGrids = ad.gridSelection || []
+                  if (adGrids.length === 0 && ad.ads?.[0]?.grid_cell_placement) {
+                    adGrids = ad.ads[0].grid_cell_placement.split(',').map(Number)
+                  }
+                  if (adGrids.length === 0 && ad.ads?.[0]?.grid_selection) {
+                    adGrids = ad.ads[0].grid_selection
+                  }
                   // Only show ads that have grid data AND overlap with selected positions
                   if (!adGrids || adGrids.length === 0) return false
                   return adGrids.some(g => posIndices.includes(g))
