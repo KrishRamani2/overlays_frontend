@@ -808,7 +808,9 @@ export default function StreamerDashboard() {
         type: ad.type,
         duration: ad.duration,
         amountPerPlay: ad.amountPerPlay,
-        gridSelection: ad.gridSelection || []
+        gridSelection: ad.gridSelection || [],
+        ads: ad.ads || [],
+        layout_json: ad.layout_json || {}
       })),
       total_ads_approved: selectedStreamAds.length,
       ads_left_count: selectedStreamAds.length
