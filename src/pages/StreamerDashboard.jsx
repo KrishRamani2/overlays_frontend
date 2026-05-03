@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useMemo, useEffect, useRef, useState, useCallback } from 'react'
 import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd, startStreamSession, updatePlaysPerStream, getPlaysPerStream, createPlaysPerStream, updateAdPlaysPerStream, fetchStreamerWallet, updateStreamerWallet, saveStreamEarnings, endStreamSession } from '../api/auth'
 import { useParams, useNavigate } from 'react-router-dom'
 import { setSecureItem, getSecureItem, removeSecureItem } from '../utils/secureStorage'
@@ -221,6 +221,12 @@ export default function StreamerDashboard() {
   const [walletInfo,         setWalletInfo]          = useState({ account_number: '', ifsc_code: '', account_holder_name: '', upi_id: '' })
   const [completedStreams,   setCompletedStreams]    = useState([])
   const [totalWalletEarnings, setTotalWalletEarnings] = useState(0)
+  const [currentMonthEarnings, setCurrentMonthEarnings] = useState(0)
+  const [currentMonthLabel,  setCurrentMonthLabel]   = useState('')
+  const [monthlyChart,       setMonthlyChart]        = useState([])
+  const [brandsWorkedWith,   setBrandsWorkedWith]    = useState([])
+  const [totalStreamsDone,   setTotalStreamsDone]    = useState(0)
+  const [totalPlaylistAds,   setTotalPlaylistAds]    = useState(0)
   const [savingWallet,       setSavingWallet]        = useState(false)
   const [isEditMode,         setIsEditMode]          = useState(false)
   const [checkedIds,         setCheckedIds]          = useState([])
@@ -231,6 +237,90 @@ export default function StreamerDashboard() {
   const gapRef        = useRef(20)
   const draggedRef    = useRef(null)
   const streamPlaysRef= useRef({}) // live ref so sync loop can read without stale closure
+
+  // ── Derived state for live brands and statistics ──
+  const { liveBrands, brandStats } = useMemo(() => {
+    const brandsMap = {}
+    let totalLifetimeCents = 0
+    let totalStreamsWithAds = completedStreams.length
+
+    // 1. Process Completed Streams (Historical data)
+    completedStreams.forEach(stream => {
+      totalLifetimeCents += (stream.total_earned_cents || 0)
+      const ads = stream.ads || []
+      ads.forEach(ad => {
+        const name = ad.brand_name || ad.ad_name?.split(' — ')[0] || 'Unknown Brand'
+        if (!brandsMap[name]) {
+          brandsMap[name] = { 
+            id: name.toLowerCase().replace(/\s+/g, '-'),
+            name, 
+            category: 'Partner', 
+            color: '#3B5BFF', 
+            logo: name[0],
+            earned_cents: 0, 
+            streamsCount: 0, 
+            lastStreamDate: stream.stream_date,
+            status: 'ended'
+          }
+        }
+        brandsMap[name].earned_cents += (ad.earned_cents || 0)
+        brandsMap[name].streamsCount += 1
+        if (new Date(stream.stream_date) > new Date(brandsMap[name].lastStreamDate)) {
+          brandsMap[name].lastStreamDate = stream.stream_date
+        }
+      })
+    })
+
+    // 2. Process Current Playlist (Active brands)
+    playlist.forEach(ad => {
+      const name = ad.brand || ad.brand_name || ad.name?.split(' — ')[0] || 'Unknown Brand'
+      if (!brandsMap[name]) {
+        brandsMap[name] = { 
+          id: name.toLowerCase().replace(/\s+/g, '-'),
+          name, 
+          category: 'Partner', 
+          color: '#3B5BFF', 
+          logo: name[0],
+          earned_cents: 0, 
+          streamsCount: 0, 
+          lastStreamDate: 'Never',
+          status: 'active'
+        }
+      } else {
+        brandsMap[name].status = 'active'
+      }
+    })
+
+    // 3. Process Ad Requests (Potential brands)
+    adRequests.forEach(req => {
+      const name = req.brand
+      if (!brandsMap[name]) {
+        brandsMap[name] = {
+          id: name.toLowerCase().replace(/\s+/g, '-'),
+          name,
+          category: req.brandCategory || 'Potential Partner',
+          color: '#CBD5E1',
+          logo: name[0],
+          earned_cents: 0,
+          streamsCount: 0,
+          lastStreamDate: 'Never',
+          status: 'pending'
+        }
+      }
+    })
+
+    const brandsList = Object.values(brandsMap).sort((a, b) => b.earned_cents - a.earned_cents)
+
+    return { 
+      liveBrands: brandsList,
+      brandStats: {
+        totalEarned: totalLifetimeCents / 100,
+        activeCount: brandsList.filter(b => b.status === 'active').length,
+        totalStreams: totalStreamsWithAds,
+        pendingCount: adRequests.length
+      }
+    }
+  }, [completedStreams, playlist, adRequests])
 
   /* ── Auth + data load ── */
   useEffect(() => {
@@ -313,9 +403,15 @@ export default function StreamerDashboard() {
     const userId = user.id || user.uid || id
     fetchStreamerWallet(userId).then(res => {
       if (res) {
-        if (res.payout_details) setWalletInfo(res.payout_details)
-        if (res.streams) setCompletedStreams(res.streams)
-        if (res.total_earned_cents != null) setTotalWalletEarnings(res.total_earned_cents)
+        if (res.payout_details)              setWalletInfo(res.payout_details)
+        if (res.streams)                     setCompletedStreams(res.streams)
+        if (res.total_earned_cents != null)  setTotalWalletEarnings(res.total_earned_cents)
+        if (res.current_month_earned_cents != null) setCurrentMonthEarnings(res.current_month_earned_cents)
+        if (res.current_month_label)         setCurrentMonthLabel(res.current_month_label)
+        if (res.monthly_chart)               setMonthlyChart(res.monthly_chart)
+        if (res.brands_worked_with)          setBrandsWorkedWith(res.brands_worked_with)
+        if (res.total_streams_done != null)  setTotalStreamsDone(res.total_streams_done)
+        if (res.total_playlist_ads != null)  setTotalPlaylistAds(res.total_playlist_ads)
       }
     }).catch(err => console.error('Error fetching wallet:', err))
   }, [user, activePage])
@@ -375,6 +471,7 @@ export default function StreamerDashboard() {
               campaignId: camp.campaign_id || camp.id,
               campaignName: camp.campaign_name || 'Unnamed Campaign',
               brand: brand.brand_name,
+              brandCategory: brand.brand_category,
               displayName: `${brand.brand_name} — ${camp.campaign_name || 'Unnamed Campaign'}`,
               tier: camp.tier || tier,
               budgetRange: `₹${budget}`,
@@ -382,6 +479,7 @@ export default function StreamerDashboard() {
               daysLive: camp.campaign_duration_days || 7,
               type: camp.ads && camp.ads.length > 0 ? camp.ads[0].ad_type : 'unknown',
               approvedCount: camp.play_count || 10,
+              playsPerStream: camp.ads?.[0]?.plays_per_stream || 24,
               ads: camp.ads || []
             }
           })
@@ -456,6 +554,7 @@ export default function StreamerDashboard() {
               campaignId: ad.campaign_id,
               name: ad.ad_name,
               brand: ad.brand_name,
+              brandCategory: ad.brand_category,
               duration: ad.show_duration || 10,
               status: ad.status === 'approved' ? 'live' : ad.status,
               daysLeft: 0,
@@ -666,8 +765,9 @@ export default function StreamerDashboard() {
         campaign_id: req.campaignId,
         approved_count: req.approvedCount,
         remaining_count: req.approvedCount,
+        plays_per_stream: req.playsPerStream,
         amount_per_play: req.amountPerPlay,
-        ad_media_url: adToApprove.media_url,
+        ad_media_url: adToApprove.image_url || adToApprove.media_url,
         ad_media_type: adToApprove.ad_type,
         grid_selection: adToApprove.grid_cell_placement
           ? adToApprove.grid_cell_placement.split(',').map(Number)
@@ -834,55 +934,11 @@ export default function StreamerDashboard() {
     setTimeout(() => setCopiedLink(false), 2000)
   }
 
-  /* ── Generate long OBS overlay link with full session data ── */
+  /* ── Generate clean OBS overlay link — no session data in URL ── */
   const generateLongOverlayLink = (sessionData) => {
     const userId = user?.id || user?.uid || id
-    const baseUrl = `http://127.0.0.1:5000/api/overlay/${userId}`
-    
-    // Build comprehensive query params
-    const params = new URLSearchParams()
-    params.set('session_id', `sess_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`)
-    params.set('streamer_id', userId || '')
-    params.set('streamer_name', user?.name || '')
-    params.set('channel', user?.channel_title || user?.channel || '')
-    params.set('tier', user?.tier || 'Tier 5')
-    params.set('stream_title', sessionData.stream_title || '')
-    params.set('stream_content', sessionData.stream_content || '')
-    params.set('stream_url', sessionData.live_stream_url || '')
-    params.set('started_at', new Date().toISOString())
-    params.set('positions', (sessionData.overlay_config?.positions || []).join(','))
-    params.set('restricted', (sessionData.overlay_config?.restrictedPositions || []).join(','))
-    params.set('gap_seconds', String(sessionData.overlay_config?.gap || 20))
-    params.set('ads_enabled', String(sessionData.overlay_config?.adsEnabled !== false))
-    params.set('preset_name', sessionData.overlay_config?.presetName || 'Custom')
-    params.set('total_ads', String(sessionData.selected_ads?.length || 0))
-    
-    // Encode each ad's full data
-    if (sessionData.selected_ads) {
-      sessionData.selected_ads.forEach((ad, i) => {
-        params.set(`ad_${i}_id`, ad.id || '')
-        params.set(`ad_${i}_name`, ad.name || '')
-        params.set(`ad_${i}_brand`, ad.brand || '')
-        params.set(`ad_${i}_duration`, String(ad.duration || 10))
-        params.set(`ad_${i}_type`, ad.type || 'text')
-        params.set(`ad_${i}_grid`, (ad.gridSelection || []).join(','))
-        params.set(`ad_${i}_ppp`, String(ad.amountPerPlay || 0))
-        params.set(`ad_${i}_campaign`, ad.campaignId || '')
-        if (ad.layout_json) {
-          try {
-            params.set(`ad_${i}_layout`, btoa(JSON.stringify(ad.layout_json)))
-          } catch(e) {}
-        }
-      })
-    }
-    
-    // Add a signature hash for verification
-    params.set('sig', btoa(`${userId}:${Date.now()}:${sessionData.selected_ads?.length || 0}`).replace(/=/g, ''))
-    params.set('v', '2')
-    params.set('resolution', '1920x1080')
-    params.set('bg', 'transparent')
-    
-    return `${baseUrl}?${params.toString()}`
+    // Clean URL — backend resolves session data from DB using streamer_id
+    return `http://127.0.0.1:5000/api/overlay/${userId}`
   }
 
   /* ── Move ad up/down in the streaming queue ── */
@@ -1004,51 +1060,62 @@ export default function StreamerDashboard() {
     if (!window.confirm('End this stream?')) return
     const userId = user?.id || user?.uid || id
 
-    // ── Sync final play counts back to the backend for each ad ──
     const finalPlays = streamPlaysRef.current
-    const updatePromises = selectedStreamAds
-      .filter(ad => ad.backendId && ad.campaignId)
-      .flatMap(ad => {
-        const playsRemaining = finalPlays[ad.id] ?? 0
-        // This is what we will send to the backend so it knows what the new remaining count should be
-        return [
-          updatePlaysPerStream(userId, ad.campaignId, ad.backendId, {
-            plays_per_stream: playsRemaining
-          }),
-          updateAdPlaysPerStream(ad.backendId, {
-            plays_per_stream: playsRemaining
-          })
-        ]
-      })
+    const initialPlays = getSecureItem(`streamer_stream_plays_${userId}`) || {}
+
+    // ── Update plays count for EVERY ad — one pair of calls each ──
+    const allAdsWithBackendId = selectedStreamAds.filter(ad => ad.backendId && ad.campaignId)
+    const updatePromises = allAdsWithBackendId.flatMap(ad => {
+      const playsRemaining = finalPlays[ad.id] ?? 0
+      return [
+        updatePlaysPerStream(userId, ad.campaignId, ad.backendId, { plays_per_stream: playsRemaining }),
+        updateAdPlaysPerStream(ad.backendId, { plays_per_stream: playsRemaining })
+      ]
+    })
 
     try {
-      await Promise.all(updatePromises)
-      console.log('Ad play counts updated after stream ended.')
+      // Fire all play-count updates in parallel — don't block on failures
+      const results = await Promise.allSettled(updatePromises)
+      const failed = results.filter(r => r.status === 'rejected')
+      if (failed.length) console.warn(`${failed.length} ad play-count update(s) failed:`, failed)
+      else console.log(`All ${allAdsWithBackendId.length} ad play counts updated.`)
 
-      const initialPlays = getSecureItem(`streamer_stream_plays_${userId}`) || {}
+      // ── Build earnings payload for every ad in this stream ──
       const adsPayload = selectedStreamAds.map(ad => {
         const plays_start = initialPlays[ad.id] || ad.plays_per_stream || ad.approved_count || 24
-        const plays_end = finalPlays[ad.id] ?? 0
-        const amountPerPlayRupees = ad.amountPerPlay || 0
-        const estimated_cost_cents = Math.round(amountPerPlayRupees * plays_start * 100)
+        const plays_end   = finalPlays[ad.id] ?? 0
+        const estimated_cost_cents = Math.round((ad.amountPerPlay || 0) * plays_start * 100)
         return {
           ad_id: ad.backendId,
           ad_name: ad.name,
           plays_per_stream_start: plays_start,
           plays_per_stream_end: plays_end,
-          estimated_cost_cents: estimated_cost_cents
+          estimated_cost_cents
         }
       })
 
+      // ── Build approved_ads payload for the overlays backend ──
+      const approvedAdsPayload = allAdsWithBackendId.map(ad => ({
+        approved_ad_id: ad.backendId,
+        id: ad.backendId,
+        remaining_count: finalPlays[ad.id] ?? 0
+      }))
+
+      // ── End session on overlays backend (marks it ended, returns 410 from overlay link) ──
+      await endStreamSession({
+        streamer_id: userId,
+        approved_ads: approvedAdsPayload,
+        ads_left_count: allAdsWithBackendId.reduce((s, ad) => s + (finalPlays[ad.id] ?? 0), 0),
+        total_ads_approved: selectedStreamAds.length
+      })
+
+      // ── Save earnings if there are ads ──
       if (adsPayload.length > 0) {
         await saveStreamEarnings({
           streamer_id: userId,
           stream_title: streamTitle || 'Untitled Stream',
           ads: adsPayload
         })
-        // End the stream session on the overlays backend
-        await endStreamSession({ streamer_id: userId })
-
         // Reload wallet data
         fetchStreamerWallet(userId).then(res => {
           if (res) {
@@ -1057,22 +1124,17 @@ export default function StreamerDashboard() {
             if (res.total_earned_cents != null) setTotalWalletEarnings(res.total_earned_cents)
           }
         }).catch(err => console.error(err))
-      } else {
-        // Also call endStreamSession if there are no ads
-        await endStreamSession({ streamer_id: userId })
       }
     } catch (err) {
-      console.error('Failed to update some ad counts or save stream earnings:', err)
+      console.error('Failed during stream end cleanup:', err)
     }
 
-    // Clear stream plays from storage
+    // ── Reset local state ──
     removeSecureItem(`streamer_stream_plays_${userId}`)
+    removeSecureItem(`streamer_last_fetch_${userId}`)
     streamPlaysRef.current = {}
     setStreamPlaysMap({})
-
-    // Invalidate the data cache so next load re-fetches fresh counts
-    removeSecureItem(`streamer_last_fetch_${userId}`)
-
+    setOverlayLink('') // clear the OBS link — a new one is generated on next stream start
     setIsStreaming(false)
     setStreamStartTime(null)
     setStreamElapsed(0)
@@ -1190,7 +1252,7 @@ export default function StreamerDashboard() {
               <div className="sd-page-header">
                 <div>
                   <div className="sd-eyebrow">Overview</div>
-                  <h1 className="sd-page-title">Good morning, <em>{user?.name?.split(' ')[0]}.</em></h1>
+                  <h1 className="sd-page-title">Good to see you, <em>{user?.name?.split(' ')[0]}.</em></h1>
                 </div>
                 <div className="sd-page-actions">
                   <button className="sd-btn-primary" onClick={() => setActivePage('stream')}>
@@ -1222,11 +1284,25 @@ export default function StreamerDashboard() {
                 </div>
 
                 <div className="sd-stats-col">
+                  {/* Row 1: Earnings KPIs */}
                   <div className="sd-stats-row">
                     {[
-                      { label: 'Lifetime earnings',  value: DUMMY_EARNINGS.lifetime,  sub: 'All time' },
-                      { label: 'This month',         value: DUMMY_EARNINGS.thisMonth, sub: 'June 2026', highlight: true },
-                      { label: 'Next payout',        value: DUMMY_EARNINGS.nextPayout,sub: DUMMY_EARNINGS.nextPayoutDate },
+                      {
+                        label: 'Lifetime earnings',
+                        value: `₹${(totalWalletEarnings / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                        sub: 'All time'
+                      },
+                      {
+                        label: 'This month',
+                        value: `₹${(currentMonthEarnings / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                        sub: currentMonthLabel || 'Current month',
+                        highlight: true
+                      },
+                      {
+                        label: 'Unpaid balance',
+                        value: `₹${(totalWalletEarnings / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                        sub: 'Pending payout'
+                      },
                     ].map((s, i) => (
                       <div key={i} className={`sd-stat-card ${s.highlight ? 'highlight' : ''}`}>
                         <div className="sd-stat-value">{s.value}</div>
@@ -1235,11 +1311,12 @@ export default function StreamerDashboard() {
                       </div>
                     ))}
                   </div>
+                  {/* Row 2: Activity counts */}
                   <div className="sd-stats-row" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
                     {[
-                      { label: 'Brands worked with', value: DUMMY_BRANDS.filter(b=>b.status!=='pending').length, sub: 'All time' },
-                      { label: 'Total streams',       value: '84',  sub: 'With ads' },
-                      { label: 'Live ads now',        value: liveAds.length, sub: 'In rotation' },
+                      { label: 'Brands worked with', value: brandsWorkedWith.length, sub: 'All time' },
+                      { label: 'Total streams',       value: totalStreamsDone,        sub: 'With ads' },
+                      { label: 'Ads in playlist',     value: totalPlaylistAds || liveAds.length, sub: 'Scheduled' },
                     ].map((s, i) => (
                       <div key={i} className="sd-stat-card">
                         <div className="sd-stat-value">{s.value}</div>
@@ -1259,9 +1336,16 @@ export default function StreamerDashboard() {
                       <div className="sd-eyebrow">Earnings</div>
                       <h2 className="sd-card-title">Revenue <em>over time</em></h2>
                     </div>
-                    <span className="sd-earnings-chip">↑ {DUMMY_EARNINGS.thisMonth} this month</span>
+                    <span className="sd-earnings-chip">
+                      {currentMonthEarnings > 0
+                        ? `↑ ₹${(currentMonthEarnings / 100).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} this month`
+                        : 'No earnings yet'}
+                    </span>
                   </div>
-                  <EarningsChart data={DUMMY_EARNINGS.chart} />
+                  {monthlyChart.length > 0
+                    ? <EarningsChart data={monthlyChart} />
+                    : <p className="sd-empty" style={{ padding: '2rem' }}>Complete streams to see your earnings chart.</p>
+                  }
                 </div>
 
                 <div className="sd-card">
@@ -1272,20 +1356,33 @@ export default function StreamerDashboard() {
                     </div>
                   </div>
                   <div className="sd-history-list">
-                    {DUMMY_STREAM_HISTORY.map((s, i) => (
-                      <div key={i} className="sd-history-row">
-                        <div className="sd-history-info">
-                          <span className="sd-history-date">{s.date}</span>
-                          <span className="sd-history-meta">{s.duration} · {s.viewers}</span>
-                          <div className="sd-history-brands">
-                            {s.brands.map(b => (
-                              <span key={b} className="sd-history-brand-chip">{b}</span>
-                            ))}
-                          </div>
-                        </div>
-                        <span className="sd-history-earn">{s.earnings}</span>
-                      </div>
-                    ))}
+                    {completedStreams.length === 0
+                      ? <p className="sd-empty">No completed streams yet.</p>
+                      : completedStreams.slice(0, 6).map((s, i) => {
+                          const streamAds = Array.isArray(s.ads) ? s.ads : []
+                          const brands = [...new Set(streamAds.map(a => a.ad_name).filter(Boolean))]
+                          const dateStr = s.stream_date
+                            ? new Date(s.stream_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                            : '—'
+                          return (
+                            <div key={s.id || i} className="sd-history-row">
+                              <div className="sd-history-info">
+                                <span className="sd-history-date">{s.stream_title || 'Untitled Stream'}</span>
+                                <span className="sd-history-meta">{dateStr}</span>
+                                <div className="sd-history-brands">
+                                  {brands.slice(0, 3).map(b => (
+                                    <span key={b} className="sd-history-brand-chip">{b}</span>
+                                  ))}
+                                  {brands.length > 3 && <span className="sd-history-brand-chip">+{brands.length - 3}</span>}
+                                </div>
+                              </div>
+                              <span className="sd-history-earn">
+                                ₹{((s.total_earned_cents || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          )
+                        })
+                    }
                   </div>
                 </div>
               </div>
@@ -1458,10 +1555,10 @@ export default function StreamerDashboard() {
               {/* ── Brand stats ── */}
               <div className="sd-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom:'1.25rem' }}>
                 {[
-                  { label: 'Total earned from brands', value: DUMMY_EARNINGS.lifetime, sub: 'All time' },
-                  { label: 'Active brand relationships', value: DUMMY_BRANDS.filter(b=>b.status==='active').length, sub: 'Currently running', highlight: true },
-                  { label: 'Total streams with ads',   value: '84', sub: 'Across all brands' },
-                  { label: 'Pending requests',   value: adRequests.length, sub: 'Need review' },
+                  { label: 'Total earned from brands', value: `₹${brandStats.totalEarned.toLocaleString()}`, sub: 'All time' },
+                  { label: 'Active brand relationships', value: brandStats.activeCount, sub: 'Currently running', highlight: true },
+                  { label: 'Total streams with ads',   value: brandStats.totalStreams, sub: 'Across all brands' },
+                  { label: 'Pending requests',   value: brandStats.pendingCount, sub: 'Need review' },
                 ].map((s, i) => (
                   <div key={i} className={`sd-stat-card ${s.highlight ? 'highlight' : ''}`}>
                     <div className="sd-stat-value">{s.value}</div>
@@ -1478,10 +1575,10 @@ export default function StreamerDashboard() {
                     <div className="sd-eyebrow">Partners</div>
                     <h2 className="sd-card-title">Brands I've <em>worked with</em></h2>
                   </div>
-                  <span className="sd-earnings-chip">{DUMMY_BRANDS.filter(b=>b.status==='active').length} active</span>
+                  <span className="sd-earnings-chip">{brandStats.activeCount} active</span>
                 </div>
                 <div className="sd-brands-grid">
-                  {DUMMY_BRANDS.map(brand => (
+                  {liveBrands.map(brand => (
                     <div key={brand.id} className="sd-brand-card" style={{ '--brand-color': brand.color }}>
                       <div className="sd-brand-card-top">
                         <div className="sd-brand-logo" style={{ background: brand.color, color: 'white' }}>
@@ -1493,21 +1590,24 @@ export default function StreamerDashboard() {
                         </div>
                         <StatusBadge status={brand.status} />
                       </div>
-                      <div className="sd-brand-earned">{brand.earned}</div>
+                      <div className="sd-brand-earned">₹{(brand.earned_cents / 100).toLocaleString()}</div>
                       <div className="sd-brand-earned-label">total earned</div>
                       <div className="sd-brand-stats">
                         <div className="sd-brand-stat">
-                          <span className="sd-brand-stat-val">{brand.streams}</span>
+                          <span className="sd-brand-stat-val">{brand.streamsCount}</span>
                           <span className="sd-brand-stat-key">streams</span>
                         </div>
                         <div className="sd-brand-stat-divider"/>
                         <div className="sd-brand-stat">
-                          <span className="sd-brand-stat-val">{brand.lastStream}</span>
+                          <span className="sd-brand-stat-val">
+                            {brand.lastStreamDate === 'Never' ? 'Never' : 
+                             new Date(brand.lastStreamDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </span>
                           <span className="sd-brand-stat-key">last stream</span>
                         </div>
                       </div>
                       <div className="sd-brand-bar-track">
-                        <div className="sd-brand-bar-fill" style={{ background: brand.color, width: `${Math.min((parseInt(brand.earned.replace(/[^0-9]/g,'')) / 50000) * 100, 100)}%` }}/>
+                        <div className="sd-brand-bar-fill" style={{ background: brand.color, width: `${Math.min((brand.earned_cents / 5000000) * 100, 100)}%` }}/>
                       </div>
                     </div>
                   ))}
