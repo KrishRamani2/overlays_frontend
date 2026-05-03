@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd, startStreamSession, updatePlaysPerStream, getPlaysPerStream, createPlaysPerStream, updateAdPlaysPerStream } from '../api/auth'
+import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd, startStreamSession, updatePlaysPerStream, getPlaysPerStream, createPlaysPerStream, updateAdPlaysPerStream, fetchStreamerWallet, updateStreamerWallet, saveStreamEarnings } from '../api/auth'
 import { useParams, useNavigate } from 'react-router-dom'
 import { setSecureItem, getSecureItem, removeSecureItem } from '../utils/secureStorage'
 import './StreamerDashboard.css'
@@ -218,6 +218,10 @@ export default function StreamerDashboard() {
   // Misc
   const [previewOpen,        setPreviewOpen]         = useState(false)
   const [previewAd,          setPreviewAd]           = useState(null)
+  const [walletInfo,         setWalletInfo]          = useState({ account_number: '', ifsc_code: '', account_holder_name: '', upi_id: '' })
+  const [completedStreams,   setCompletedStreams]    = useState([])
+  const [totalWalletEarnings, setTotalWalletEarnings] = useState(0)
+  const [savingWallet,       setSavingWallet]        = useState(false)
   const [isEditMode,         setIsEditMode]          = useState(false)
   const [checkedIds,         setCheckedIds]          = useState([])
 
@@ -303,7 +307,18 @@ export default function StreamerDashboard() {
     }
   }, [navigate])
 
-  /* ── Ad Requests + Approved/Rejected from backend (single source of truth) ── */
+  /* ── Load Wallet and Earnings ── */
+  useEffect(() => {
+    if (!user) return
+    const userId = user.id || user.uid || id
+    fetchStreamerWallet(userId).then(res => {
+      if (res) {
+        if (res.payout_details) setWalletInfo(res.payout_details)
+        if (res.streams) setCompletedStreams(res.streams)
+        if (res.total_earned_cents != null) setTotalWalletEarnings(res.total_earned_cents)
+      }
+    }).catch(err => console.error('Error fetching wallet:', err))
+  }, [user, activePage])
   useEffect(() => {
     if (!user || DEV_MODE) return
 
@@ -1009,8 +1024,39 @@ export default function StreamerDashboard() {
     try {
       await Promise.all(updatePromises)
       console.log('Ad play counts updated after stream ended.')
+
+      const initialPlays = getSecureItem(`streamer_stream_plays_${userId}`) || {}
+      const adsPayload = selectedStreamAds.map(ad => {
+        const plays_start = initialPlays[ad.id] || ad.plays_per_stream || ad.approved_count || 24
+        const plays_end = finalPlays[ad.id] ?? 0
+        const amountPerPlayRupees = ad.amountPerPlay || 0
+        const estimated_cost_cents = Math.round(amountPerPlayRupees * plays_start * 100)
+        return {
+          ad_id: ad.backendId,
+          ad_name: ad.name,
+          plays_per_stream_start: plays_start,
+          plays_per_stream_end: plays_end,
+          estimated_cost_cents: estimated_cost_cents
+        }
+      })
+
+      if (adsPayload.length > 0) {
+        await saveStreamEarnings({
+          streamer_id: userId,
+          stream_title: streamTitle || 'Untitled Stream',
+          ads: adsPayload
+        })
+        // Reload wallet data
+        fetchStreamerWallet(userId).then(res => {
+          if (res) {
+            if (res.payout_details) setWalletInfo(res.payout_details)
+            if (res.streams) setCompletedStreams(res.streams)
+            if (res.total_earned_cents != null) setTotalWalletEarnings(res.total_earned_cents)
+          }
+        }).catch(err => console.error(err))
+      }
     } catch (err) {
-      console.error('Failed to update some ad counts:', err)
+      console.error('Failed to update some ad counts or save stream earnings:', err)
     }
 
     // Clear stream plays from storage
@@ -2084,22 +2130,22 @@ export default function StreamerDashboard() {
             </div>
           )}
 
-          {/* ── EARNINGS ── */}
+          {/* ── EARNINGS & WALLET ── */}
           {activePage === 'earnings' && (
             <div className="sd-content">
               <div className="sd-page-header">
                 <div>
-                  <div className="sd-eyebrow">Earnings</div>
-                  <h1 className="sd-page-title">Financial <em>overview</em></h1>
+                  <div className="sd-eyebrow">Wallet & Earnings</div>
+                  <h1 className="sd-page-title">Payouts & <em>Financials</em></h1>
                 </div>
               </div>
 
               <div className="sd-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom:'1.25rem' }}>
                 {[
-                  { label: 'Lifetime earnings',  value: DUMMY_EARNINGS.lifetime,  sub: 'All time'    },
-                  { label: 'This month',          value: DUMMY_EARNINGS.thisMonth, sub: 'June 2026', highlight: true },
-                  { label: 'Next payout',         value: DUMMY_EARNINGS.nextPayout,sub: DUMMY_EARNINGS.nextPayoutDate },
-                  { label: 'Avg per stream',      value: '₹2,191', sub: 'Per stream with ads' },
+                  { label: 'Total wallet balance',  value: `₹${(totalWalletEarnings / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,  sub: 'Live from DB', highlight: true },
+                  { label: 'This month',          value: DUMMY_EARNINGS.thisMonth, sub: 'June 2026' },
+                  { label: 'Completed streams',         value: completedStreams.length, sub: 'With ads' },
+                  { label: 'Avg per stream',      value: `₹${(completedStreams.length > 0 ? (totalWalletEarnings / 100 / completedStreams.length) : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: 'Per ad-enabled stream' },
                 ].map((s, i) => (
                   <div key={i} className={`sd-stat-card ${s.highlight ? 'highlight' : ''}`}>
                     <div className="sd-stat-value">{s.value}</div>
@@ -2109,63 +2155,112 @@ export default function StreamerDashboard() {
                 ))}
               </div>
 
-              <div className="sd-row-2" style={{ marginBottom: '1.25rem' }}>
+              <div className="sd-row-2" style={{ marginBottom: '1.25rem', display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '1.25rem' }}>
+                {/* Completed Streams History */}
                 <div className="sd-card">
                   <div className="sd-card-header">
                     <div>
-                      <div className="sd-eyebrow">Monthly trend</div>
-                      <h2 className="sd-card-title">Earnings <em>chart</em></h2>
+                      <div className="sd-eyebrow">By Stream</div>
+                      <h2 className="sd-card-title">Completed <em>Streams & Earnings</em></h2>
                     </div>
                   </div>
-                  <EarningsChart data={DUMMY_EARNINGS.chart} />
+                  <div className="sd-table-wrap" style={{ maxHeight: '420px', overflowY: 'auto' }}>
+                    {completedStreams.length === 0 ? (
+                      <p className="sd-empty" style={{ padding: '2rem' }}>No stream earnings recorded yet.</p>
+                    ) : (
+                      <table className="sd-table">
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th>Stream Title</th>
+                            <th>Amount Earned</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {completedStreams.map((s, i) => (
+                            <tr key={i}>
+                              <td className="sd-muted">{new Date(s.stream_date).toLocaleDateString()}</td>
+                              <td><strong>{s.stream_title || 'Untitled Stream'}</strong></td>
+                              <td><strong style={{ color: '#10B981' }}>₹{(s.total_earned_cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
                 </div>
 
+                {/* Streamer Payout Settings */}
                 <div className="sd-card">
                   <div className="sd-card-header">
                     <div>
-                      <div className="sd-eyebrow">By brand</div>
-                      <h2 className="sd-card-title">Earnings <em>breakdown</em></h2>
+                      <div className="sd-eyebrow">Payout settings</div>
+                      <h2 className="sd-card-title">Bank & <em>UPI Details</em></h2>
                     </div>
                   </div>
-                  <div className="sd-brand-breakdown">
-                    {DUMMY_BRANDS.filter(b => b.status !== 'pending').map(brand => (
-                      <div key={brand.id} className="sd-breakdown-row">
-                        <div className="sd-brand-logo-sm" style={{ background: brand.color, color:'white' }}>{brand.logo}</div>
-                        <div className="sd-breakdown-info">
-                          <span className="sd-breakdown-name">{brand.name}</span>
-                          <div className="sd-breakdown-bar-track">
-                            <div className="sd-breakdown-bar" style={{ background: brand.color, width: `${Math.min((parseInt(brand.earned.replace(/[^0-9]/g,'')) / 50000)*100,100)}%` }}/>
-                          </div>
-                        </div>
-                        <span className="sd-breakdown-amount">{brand.earned}</span>
-                      </div>
-                    ))}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+                    <div className="sd-field-group">
+                      <label className="sd-field-label" style={{ fontWeight: '500', fontSize: '0.85rem' }}>Account Holder Name</label>
+                      <input
+                        type="text"
+                        className="sd-input"
+                        placeholder="John Doe"
+                        value={walletInfo.account_holder_name || ''}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #E2E8F0', marginTop: '0.25rem' }}
+                        onChange={e => setWalletInfo(p => ({ ...p, account_holder_name: e.target.value }))}
+                      />
+                    </div>
+                    <div className="sd-field-group">
+                      <label className="sd-field-label" style={{ fontWeight: '500', fontSize: '0.85rem' }}>Bank Account Number</label>
+                      <input
+                        type="text"
+                        className="sd-input"
+                        placeholder="1234567890"
+                        value={walletInfo.account_number || ''}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #E2E8F0', marginTop: '0.25rem' }}
+                        onChange={e => setWalletInfo(p => ({ ...p, account_number: e.target.value }))}
+                      />
+                    </div>
+                    <div className="sd-field-group">
+                      <label className="sd-field-label" style={{ fontWeight: '500', fontSize: '0.85rem' }}>IFSC Code</label>
+                      <input
+                        type="text"
+                        className="sd-input"
+                        placeholder="HDFC0001234"
+                        value={walletInfo.ifsc_code || ''}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #E2E8F0', marginTop: '0.25rem' }}
+                        onChange={e => setWalletInfo(p => ({ ...p, ifsc_code: e.target.value }))}
+                      />
+                    </div>
+                    <div className="sd-field-group">
+                      <label className="sd-field-label" style={{ fontWeight: '500', fontSize: '0.85rem' }}>UPI ID (Optional)</label>
+                      <input
+                        type="text"
+                        className="sd-input"
+                        placeholder="johndoe@upi"
+                        value={walletInfo.upi_id || ''}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #E2E8F0', marginTop: '0.25rem' }}
+                        onChange={e => setWalletInfo(p => ({ ...p, upi_id: e.target.value }))}
+                      />
+                    </div>
+                    <button
+                      className="sd-btn-primary"
+                      disabled={savingWallet}
+                      onClick={() => {
+                        setSavingWallet(true)
+                        const userId = user?.id || user?.uid || id
+                        updateStreamerWallet(userId, walletInfo).then(() => {
+                          alert('Payout details saved successfully!')
+                        }).catch(err => {
+                          console.error(err)
+                          alert('Failed to save payout details')
+                        }).finally(() => setSavingWallet(false))
+                      }}
+                      style={{ marginTop: '0.5rem', width: '100%' }}
+                    >
+                      {savingWallet ? 'Saving...' : 'Save details'}
+                    </button>
                   </div>
-                </div>
-              </div>
-
-              <div className="sd-card">
-                <div className="sd-card-header">
-                  <div>
-                    <div className="sd-eyebrow">Payout history</div>
-                    <h2 className="sd-card-title">Friday <em>payouts</em></h2>
-                  </div>
-                </div>
-                <div className="sd-table-wrap">
-                  <table className="sd-table">
-                    <thead>
-                      <tr><th>Date</th><th>Amount</th><th>Status</th></tr>
-                    </thead>
-                    <tbody>
-                      {DUMMY_PAYOUT_HISTORY.map((p, i) => (
-                        <tr key={i}>
-                          <td className="sd-muted">{p.date}</td>
-                          <td><strong>{p.amount}</strong></td>
-                          <td><StatusBadge status={p.status}/></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               </div>
             </div>

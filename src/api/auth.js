@@ -371,3 +371,48 @@ export async function updateAdPlaysPerStream(adId, data) {
     return null
   }
 }
+
+export async function fetchStreamerWallet(streamerId) {
+  try {
+    const res = await fetch(`${ADV_BASE}/api/streamer/wallet/${streamerId}`, {
+      credentials: 'include'
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}
+
+export async function updateStreamerWallet(streamerId, data) {
+  try {
+    const res = await fetch(`${ADV_BASE}/api/streamer/wallet/${streamerId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      credentials: 'include'
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}
+
+export async function saveStreamEarnings(data) {
+  try {
+    const res = await fetch(`${ADV_BASE}/api/streamer/stream-earnings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      credentials: 'include'
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}
