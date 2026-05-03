@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd, startStreamSession, updatePlaysPerStream, getPlaysPerStream, createPlaysPerStream, updateAdPlaysPerStream, fetchStreamerWallet, updateStreamerWallet, saveStreamEarnings } from '../api/auth'
+import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd, startStreamSession, updatePlaysPerStream, getPlaysPerStream, createPlaysPerStream, updateAdPlaysPerStream, fetchStreamerWallet, updateStreamerWallet, saveStreamEarnings, endStreamSession } from '../api/auth'
 import { useParams, useNavigate } from 'react-router-dom'
 import { setSecureItem, getSecureItem, removeSecureItem } from '../utils/secureStorage'
 import './StreamerDashboard.css'
@@ -1046,6 +1046,9 @@ export default function StreamerDashboard() {
           stream_title: streamTitle || 'Untitled Stream',
           ads: adsPayload
         })
+        // End the stream session on the overlays backend
+        await endStreamSession({ streamer_id: userId })
+
         // Reload wallet data
         fetchStreamerWallet(userId).then(res => {
           if (res) {
@@ -1054,6 +1057,9 @@ export default function StreamerDashboard() {
             if (res.total_earned_cents != null) setTotalWalletEarnings(res.total_earned_cents)
           }
         }).catch(err => console.error(err))
+      } else {
+        // Also call endStreamSession if there are no ads
+        await endStreamSession({ streamer_id: userId })
       }
     } catch (err) {
       console.error('Failed to update some ad counts or save stream earnings:', err)

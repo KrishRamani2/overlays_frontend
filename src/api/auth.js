@@ -416,3 +416,19 @@ export async function saveStreamEarnings(data) {
     return null
   }
 }
+
+export async function endStreamSession(data) {
+  try {
+    const res = await fetch(`${STREAMER_BASE}/api/streamer/streams/end`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      credentials: 'include'
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}
