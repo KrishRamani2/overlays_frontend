@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd, startStreamSession } from '../api/auth'
+import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd, startStreamSession, updatePlaysPerStream, getPlaysPerStream, createPlaysPerStream, updateAdPlaysPerStream } from '../api/auth'
 import { useParams, useNavigate } from 'react-router-dom'
 import { setSecureItem, getSecureItem, removeSecureItem } from '../utils/secureStorage'
 import './StreamerDashboard.css'
@@ -213,6 +213,7 @@ export default function StreamerDashboard() {
   const [adRequests,         setAdRequests]          = useState(DEV_MODE ? DUMMY_REQUESTS : [])
   const [rejectedAds,        setRejectedAds]         = useState(DEV_MODE ? DUMMY_REJECTED : [])
   const [countdownMap,       setCountdownMap]        = useState({}) // { index: secondsUntilPlay }
+  const [streamPlaysMap,     setStreamPlaysMap]      = useState({}) // { adId: playsRemainingThisStream }
 
   // Misc
   const [previewOpen,        setPreviewOpen]         = useState(false)
@@ -220,11 +221,12 @@ export default function StreamerDashboard() {
   const [isEditMode,         setIsEditMode]          = useState(false)
   const [checkedIds,         setCheckedIds]          = useState([])
 
-  const syncRef    = useRef(null)
-  const timerRef   = useRef(null)
-  const playlistRef= useRef([])
-  const gapRef     = useRef(20)
-  const draggedRef = useRef(null)
+  const syncRef       = useRef(null)
+  const timerRef      = useRef(null)
+  const playlistRef   = useRef([])
+  const gapRef        = useRef(20)
+  const draggedRef    = useRef(null)
+  const streamPlaysRef= useRef({}) // live ref so sync loop can read without stale closure
 
   /* ── Auth + data load ── */
   useEffect(() => {
@@ -323,11 +325,30 @@ export default function StreamerDashboard() {
     const cachedStreamAds = getSecureItem(`streamer_stream_ads_${userId}`)
     if (cachedStreamAds) setSelectedStreamAds(cachedStreamAds)
 
+    // Restore stream plays map from cache (survives page refresh mid-stream)
+    const cachedStreamPlays = getSecureItem(`streamer_stream_plays_${userId}`)
+    if (cachedStreamPlays) {
+      streamPlaysRef.current = cachedStreamPlays
+      setStreamPlaysMap(cachedStreamPlays)
+    }
+
+    // Check if we already have the API data cached within the last 5 minutes
+    const lastFetchTime = getSecureItem(`streamer_last_fetch_${userId}`)
+    const cachedAdRequests = getSecureItem(`streamer_ad_requests_${userId}`)
+    const now = Date.now()
+
+    if (lastFetchTime && now - lastFetchTime < 300000 && cachedPlaylist && cachedRejected && cachedAdRequests) {
+      setAdRequests(cachedAdRequests)
+      return // skip hitting the backend
+    }
+
     Promise.all([
       fetchTierBrands(tier),
       fetchApprovedAds(userId),
       fetchRejectedAds(userId)
     ]).then(([brandData, approvedData, rejectedData]) => {
+      // Mark as fetched
+      setSecureItem(`streamer_last_fetch_${userId}`, now)
       if (brandData && brandData.items) {
         let mapped = brandData.items.flatMap(brand => 
           (brand.campaigns || []).map(camp => {
@@ -374,6 +395,22 @@ export default function StreamerDashboard() {
         })
         
         setAdRequests(mapped)
+        setSecureItem(`streamer_ad_requests_${userId}`, mapped)
+
+        // Extract real plays_per_stream from the brandData items for lookup
+        const realPlaysMap = {}
+        if (brandData && brandData.items) {
+          brandData.items.forEach(b => {
+            (b.campaigns || []).forEach(c => {
+              (c.ads || []).forEach(a => {
+                if (a.plays_per_stream != null) {
+                  if (c.campaign_id) realPlaysMap[`${c.campaign_id}_${a.ad_name}`] = a.plays_per_stream
+                  if (c.id) realPlaysMap[`${c.id}_${a.ad_name}`] = a.plays_per_stream
+                }
+              })
+            })
+          })
+        }
 
         if (approvedData) {
           const mappedPlaylist = approvedData.map(ad => {
@@ -396,6 +433,8 @@ export default function StreamerDashboard() {
               grid_cell_placement: gridCellsStr || '6,7,8'
             }
 
+            const realPlays = realPlaysMap[`${ad.campaign_id}_${ad.ad_name}`] || realPlaysMap[`${ad.campaign_db_id}_${ad.ad_name}`] || 24
+
             return {
               id: `approved_${ad.id}`,
               backendId: ad.id,
@@ -411,12 +450,30 @@ export default function StreamerDashboard() {
               remaining_count: ad.remaining_count,
               approved_count: ad.approved_count,
               used_count: ad.used_count || 0,
+              plays_per_stream: ad.plays_per_stream || realPlays || ad.remaining_count || ad.approved_count || 24,
               gridSelection: ad.grid_selection || [],
               ads: [originalAd],
               layout_json: layout
             }
           }).sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
+          
           setPlaylist(mappedPlaylist)
+
+          // Sync plays_per_stream with the backend
+          Promise.all(mappedPlaylist.map(async (ad) => {
+            if (ad.backendId && ad.campaignId) {
+              const existing = await getPlaysPerStream(userId, ad.campaignId, ad.backendId)
+              if (existing && existing.plays_per_stream != null) {
+                return { ...ad, plays_per_stream: existing.plays_per_stream }
+              } else if (ad.plays_per_stream != null) {
+                await createPlaysPerStream(userId, ad.campaignId, ad.backendId, { plays_per_stream: ad.plays_per_stream })
+                return ad
+              }
+            }
+            return ad
+          })).then(finalPlaylist => {
+            setPlaylist(finalPlaylist)
+          })
         }
 
         if (rejectedData) {
@@ -507,15 +564,35 @@ export default function StreamerDashboard() {
 
       if (currentIdx !== -1) {
         const t = currentT
-        if (t < liveAds[currentIdx].duration + 1) {
-          if (currentIdx !== prevIndex) {
-            if (prevIndex !== -1) {
-              setAdsAiredCount(c => c + 1)
+        const activeAd = liveAds[currentIdx]
+        const adId = activeAd.id
+        const instanceTimestamp = Math.floor((Date.now() / 1000) / total) * total + acc
+
+        if (!window.lastCountedInstances) window.lastCountedInstances = {}
+
+        if (t < activeAd.duration + 1) {
+          if (window.lastCountedInstances[adId] !== instanceTimestamp) {
+            window.lastCountedInstances[adId] = instanceTimestamp
+            setAdsAiredCount(c => c + 1)
+
+            // ── Decrement plays_per_stream for the ad that just STARTED ──
+            const currentPlays = streamPlaysRef.current[adId]
+            if (currentPlays !== undefined) {
+              const newPlays = Math.max(0, currentPlays - 1)
+              streamPlaysRef.current = { ...streamPlaysRef.current, [adId]: newPlays }
+              setStreamPlaysMap(prev => ({ ...prev, [adId]: newPlays }))
+
+              if (newPlays === 0) {
+                // Alert the streamer that this ad's stream quota is exhausted
+                setTimeout(() => {
+                  alert(`⚠️ Ad quota reached!\n\n"${activeAd.name}" has used all its allowed plays for this stream.`)
+                }, 100)
+              }
             }
-            prevIndex = currentIdx
-            setActiveIndex(currentIdx)
           }
-          setProgressMap(p => ({ ...p, [currentIdx]: Math.min(100, (t / liveAds[currentIdx].duration) * 100) }))
+          prevIndex = currentIdx
+          setActiveIndex(currentIdx)
+          setProgressMap(p => ({ ...p, [currentIdx]: Math.min(100, (t / activeAd.duration) * 100) }))
         }
 
         // Compute countdown for every ad
@@ -849,6 +926,16 @@ export default function StreamerDashboard() {
       ? savedPrefs.find(p => p.id === activePrefId) 
       : { positions: selectedPositions, gap: gapInput, adsEnabled };
     
+    // ── Snapshot plays_per_stream for each selected ad ──
+    const initialPlaysMap = {}
+    selectedStreamAds.forEach(ad => {
+      const activeAdData = playlist.find(p => p.id === ad.id) || ad
+      initialPlaysMap[ad.id] = activeAdData.plays_per_stream || ad.plays_per_stream || ad.remaining_count || ad.approved_count || 24
+    })
+    streamPlaysRef.current = initialPlaysMap
+    setStreamPlaysMap(initialPlaysMap)
+    setSecureItem(`streamer_stream_plays_${userId}`, initialPlaysMap)
+
     const sessionPayload = {
       streamer_id: userId,
       live_stream_url: streamLink,
@@ -871,6 +958,7 @@ export default function StreamerDashboard() {
         type: ad.type,
         duration: ad.duration,
         amountPerPlay: ad.amountPerPlay,
+        plays_per_stream: initialPlaysMap[ad.id],
         gridSelection: ad.gridSelection || [],
         ads: ad.ads || [],
         layout_json: ad.layout_json || {}
@@ -897,8 +985,42 @@ export default function StreamerDashboard() {
     startStreamSession(sessionPayload)
   }
 
-  const endStream = () => {
+  const endStream = async () => {
     if (!window.confirm('End this stream?')) return
+    const userId = user?.id || user?.uid || id
+
+    // ── Sync final play counts back to the backend for each ad ──
+    const finalPlays = streamPlaysRef.current
+    const updatePromises = selectedStreamAds
+      .filter(ad => ad.backendId && ad.campaignId)
+      .flatMap(ad => {
+        const playsRemaining = finalPlays[ad.id] ?? 0
+        // This is what we will send to the backend so it knows what the new remaining count should be
+        return [
+          updatePlaysPerStream(userId, ad.campaignId, ad.backendId, {
+            plays_per_stream: playsRemaining
+          }),
+          updateAdPlaysPerStream(ad.backendId, {
+            plays_per_stream: playsRemaining
+          })
+        ]
+      })
+
+    try {
+      await Promise.all(updatePromises)
+      console.log('Ad play counts updated after stream ended.')
+    } catch (err) {
+      console.error('Failed to update some ad counts:', err)
+    }
+
+    // Clear stream plays from storage
+    removeSecureItem(`streamer_stream_plays_${userId}`)
+    streamPlaysRef.current = {}
+    setStreamPlaysMap({})
+
+    // Invalidate the data cache so next load re-fetches fresh counts
+    removeSecureItem(`streamer_last_fetch_${userId}`)
+
     setIsStreaming(false)
     setStreamStartTime(null)
     setStreamElapsed(0)
@@ -1233,7 +1355,19 @@ export default function StreamerDashboard() {
                             <span className="sd-pl-meta">
                               {ad.brand} · {ad.type?.replace('_',' ')}
                               {ad.amountPerPlay > 0 && ` · ₹${ad.amountPerPlay.toFixed(2)} / play`}
-                              {ad.remaining_count != null && ` · ${ad.remaining_count}/${ad.approved_count} remaining`}
+                              {ad.plays_per_stream != null && (
+                                <span style={{
+                                  marginLeft: '0.4rem',
+                                  fontWeight: 600,
+                                  color: ad.plays_per_stream === 0 ? '#EF4444'
+                                       : ad.plays_per_stream <= 2   ? '#F59E0B'
+                                       : '#059669'
+                                }}>
+                                  · {ad.plays_per_stream === 0
+                                      ? '⚠ Stream quota done'
+                                      : `${ad.plays_per_stream} play${ad.plays_per_stream !== 1 ? 's' : ''} / stream`}
+                                </span>
+                              )}
                             </span>
                           </div>
                           <div className="sd-pl-right">
@@ -1493,12 +1627,21 @@ export default function StreamerDashboard() {
                             {selectedStreamAds.map((ad, i) => {
                               const isPlaying = i === activeIndex
                               const prog = progressMap[i] || 0
+                              const playsLeft = streamPlaysMap[ad.id]
+                              const exhausted = playsLeft !== undefined && playsLeft === 0
                               return (
-                                <div key={ad.id} className={`sd-live-row ${isPlaying ? 'now-playing' : ''}`}>
-                                  <div className="sd-live-indicator-dot" style={{ background: isPlaying ? '#10B981' : '#e2e8f0' }}/>
+                                <div key={ad.id} className={`sd-live-row ${isPlaying ? 'now-playing' : ''}`} style={{ opacity: exhausted ? 0.5 : 1 }}>
+                                  <div className="sd-live-indicator-dot" style={{ background: exhausted ? '#EF4444' : isPlaying ? '#10B981' : '#e2e8f0' }}/>
                                   <div className="sd-live-info">
                                     <span className="sd-live-name">{ad.name}</span>
-                                    <span className="sd-live-brand">{ad.brand} · {ad.duration}s · {ad.type?.replace('_',' ')}</span>
+                                    <span className="sd-live-brand">
+                                      {ad.brand} · {ad.duration}s · {ad.type?.replace('_',' ')}
+                                      {playsLeft !== undefined && (
+                                        <span style={{ marginLeft: '0.4rem', fontWeight: 600, color: exhausted ? '#EF4444' : playsLeft <= 2 ? '#F59E0B' : '#10B981' }}>
+                                          · {exhausted ? '⚠ Quota done' : `${playsLeft} play${playsLeft !== 1 ? 's' : ''} left`}
+                                        </span>
+                                      )}
+                                    </span>
                                   </div>
                                   {isPlaying && (
                                     <div className="sd-mini-progress">
@@ -1545,6 +1688,7 @@ export default function StreamerDashboard() {
                                     <span className="sd-live-name">{ad.name}</span>
                                     <span className="sd-live-brand">
                                       {ad.brand} · {ad.duration}s · {ad.type?.replace('_',' ')}
+                                      {ad.plays_per_stream != null && ` · ${ad.plays_per_stream} play${ad.plays_per_stream !== 1 ? 's' : ''}/stream`}
                                       {countdown > 0 && ` · plays in ${countdown}s`}
                                     </span>
                                   </div>
@@ -1912,7 +2056,10 @@ export default function StreamerDashboard() {
                                 </div>
                                 <div className="sd-request-info">
                                   <span className="sd-request-name">{ad.name}</span>
-                                  <span className="sd-request-meta">{ad.brand} · {ad.duration}s · {ad.type?.replace('_',' ')}</span>
+                                  <span className="sd-request-meta">
+                                    {ad.brand} · {ad.duration}s · {ad.type?.replace('_',' ')}
+                                    {ad.plays_per_stream != null && ` · ${ad.plays_per_stream} play${ad.plays_per_stream !== 1 ? 's' : ''}/stream`}
+                                  </span>
                                 </div>
                                 <StatusBadge status={ad.status} />
                               </div>
@@ -2410,7 +2557,7 @@ export default function StreamerDashboard() {
                         <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
                           {ad.brand} · {ad.duration}s · {ad.type?.replace('_', ' ')}
                           {ad.amountPerPlay > 0 && ` · ₹${ad.amountPerPlay.toFixed(2)} / play`}
-                          {ad.remaining_count != null && ` · ${ad.remaining_count} remaining`}
+                          {ad.plays_per_stream != null && ` · ${ad.plays_per_stream} play${ad.plays_per_stream !== 1 ? 's' : ''}/stream`}
                         </div>
                       </div>
                       <StatusBadge status={ad.status} />

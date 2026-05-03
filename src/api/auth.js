@@ -312,3 +312,62 @@ export async function startStreamSession(payload) {
     return null
   }
 }
+
+export async function updatePlaysPerStream(streamerId, campaignId, adId, data) {
+  try {
+    const res = await fetch(`${ADV_BASE}/api/streamer/campaigns/${streamerId}/${campaignId}/ads/${adId}/plays-per-stream`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      credentials: 'include'
+    })
+    if (!res.ok) throw new Error('Failed to update plays per stream')
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}
+
+export async function getPlaysPerStream(streamerId, campaignId, adId) {
+  try {
+    const res = await fetch(`${ADV_BASE}/api/streamer/campaigns/${streamerId}/${campaignId}/ads/${adId}/plays-per-stream`, {
+      credentials: 'include'
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch (err) {
+    return null
+  }
+}
+
+export async function createPlaysPerStream(streamerId, campaignId, adId, data) {
+  try {
+    const res = await fetch(`${ADV_BASE}/api/streamer/campaigns/${streamerId}/${campaignId}/ads/${adId}/plays-per-stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      credentials: 'include'
+    })
+    if (!res.ok) throw new Error('Failed to create plays per stream')
+    return await res.json()
+  } catch (err) {
+    return null
+  }
+}
+
+export async function updateAdPlaysPerStream(adId, data) {
+  try {
+    const res = await fetch(`${ADV_BASE}/api/streamer/ads/${adId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      credentials: 'include'
+    })
+    if (!res.ok) throw new Error('Failed to update ad plays per stream via patch')
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}
