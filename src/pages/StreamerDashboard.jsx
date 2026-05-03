@@ -193,6 +193,7 @@ export default function StreamerDashboard() {
   const [posStatus,          setPosStatus]           = useState('')
   const [overlayLink,        setOverlayLink]         = useState('')
   const [copiedLink,         setCopiedLink]          = useState(false)
+  const [streamSessionData,  setStreamSessionData]   = useState(null)
 
   // Go Live multi-step
   const [goLiveStep,         setGoLiveStep]          = useState(1) // 1 | 2 | 3
@@ -234,6 +235,7 @@ export default function StreamerDashboard() {
       
       // Use id from user object
       const userId = u.id || u.uid
+      // Default overlay link — gets replaced with a long session link when going live
       setOverlayLink(`http://127.0.0.1:5000/api/overlay/${userId}`)
       
       // Load preferences if available
@@ -450,11 +452,14 @@ export default function StreamerDashboard() {
 
   /* ── Sync loop ── */
   useEffect(() => {
-    const liveAds = playlist.filter(a => a.status === 'live')
-    if (liveAds.length > 0) startSync(liveAds)
+    // When streaming, only rotate through selectedStreamAds
+    const adsToSync = isStreaming && selectedStreamAds.length > 0
+      ? selectedStreamAds
+      : playlist.filter(a => a.status === 'live')
+    if (adsToSync.length > 0) startSync(adsToSync)
     else stopSync()
     return () => stopSync()
-  }, [playlist, gapInput])
+  }, [playlist, gapInput, isStreaming, selectedStreamAds])
 
   /* ── Stream elapsed timer ── */
   useEffect(() => {
@@ -737,6 +742,70 @@ export default function StreamerDashboard() {
     setTimeout(() => setCopiedLink(false), 2000)
   }
 
+  /* ── Generate long OBS overlay link with full session data ── */
+  const generateLongOverlayLink = (sessionData) => {
+    const userId = user?.id || user?.uid || id
+    const baseUrl = `http://127.0.0.1:5000/api/overlay/${userId}`
+    
+    // Build comprehensive query params
+    const params = new URLSearchParams()
+    params.set('session_id', `sess_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`)
+    params.set('streamer_id', userId || '')
+    params.set('streamer_name', user?.name || '')
+    params.set('channel', user?.channel_title || user?.channel || '')
+    params.set('tier', user?.tier || 'Tier 5')
+    params.set('stream_title', sessionData.stream_title || '')
+    params.set('stream_content', sessionData.stream_content || '')
+    params.set('stream_url', sessionData.live_stream_url || '')
+    params.set('started_at', new Date().toISOString())
+    params.set('positions', (sessionData.overlay_config?.positions || []).join(','))
+    params.set('restricted', (sessionData.overlay_config?.restrictedPositions || []).join(','))
+    params.set('gap_seconds', String(sessionData.overlay_config?.gap || 20))
+    params.set('ads_enabled', String(sessionData.overlay_config?.adsEnabled !== false))
+    params.set('preset_name', sessionData.overlay_config?.presetName || 'Custom')
+    params.set('total_ads', String(sessionData.selected_ads?.length || 0))
+    
+    // Encode each ad's full data
+    if (sessionData.selected_ads) {
+      sessionData.selected_ads.forEach((ad, i) => {
+        params.set(`ad_${i}_id`, ad.id || '')
+        params.set(`ad_${i}_name`, ad.name || '')
+        params.set(`ad_${i}_brand`, ad.brand || '')
+        params.set(`ad_${i}_duration`, String(ad.duration || 10))
+        params.set(`ad_${i}_type`, ad.type || 'text')
+        params.set(`ad_${i}_grid`, (ad.gridSelection || []).join(','))
+        params.set(`ad_${i}_ppp`, String(ad.amountPerPlay || 0))
+        params.set(`ad_${i}_campaign`, ad.campaignId || '')
+        if (ad.layout_json) {
+          try {
+            params.set(`ad_${i}_layout`, btoa(JSON.stringify(ad.layout_json)))
+          } catch(e) {}
+        }
+      })
+    }
+    
+    // Add a signature hash for verification
+    params.set('sig', btoa(`${userId}:${Date.now()}:${sessionData.selected_ads?.length || 0}`).replace(/=/g, ''))
+    params.set('v', '2')
+    params.set('resolution', '1920x1080')
+    params.set('bg', 'transparent')
+    
+    return `${baseUrl}?${params.toString()}`
+  }
+
+  /* ── Move ad up/down in the streaming queue ── */
+  const moveStreamAd = (index, direction) => {
+    setSelectedStreamAds(prev => {
+      const next = [...prev]
+      const newIndex = index + direction
+      if (newIndex < 0 || newIndex >= next.length) return prev
+      const temp = next[index]
+      next[index] = next[newIndex]
+      next[newIndex] = temp
+      return next
+    })
+  }
+
   const handleDragStart = (e, id) => { draggedRef.current = id; e.dataTransfer.effectAllowed = 'move' }
   const handleDrop = (e, targetId) => {
     e.stopPropagation()
@@ -775,22 +844,16 @@ export default function StreamerDashboard() {
   }
 
   const startStream = () => {
-    setIsStreaming(true)
-    setStreamStartTime(Date.now())
-    setAdsAiredCount(0)
-    setStreamElapsed(0)
-
     const userId = user?.id || user?.uid || id;
     const overlaySetup = activePrefId 
       ? savedPrefs.find(p => p.id === activePrefId) 
       : { positions: selectedPositions, gap: gapInput, adsEnabled };
     
-    startStreamSession({
+    const sessionPayload = {
       streamer_id: userId,
       live_stream_url: streamLink,
       stream_title: streamTitle,
       stream_content: streamContent,
-      obs_overlay_link: overlayLink,
       overlay_config: {
         presetId: activePrefId,
         presetName: activePrefId ? savedPrefs.find(p => p.id === activePrefId)?.name : 'Custom',
@@ -814,7 +877,24 @@ export default function StreamerDashboard() {
       })),
       total_ads_approved: selectedStreamAds.length,
       ads_left_count: selectedStreamAds.length
-    })
+    }
+
+    // Generate the long OBS overlay link with full session data
+    const longLink = generateLongOverlayLink(sessionPayload)
+    setOverlayLink(longLink)
+    sessionPayload.obs_overlay_link = longLink
+
+    // Save stream session data locally
+    setStreamSessionData(sessionPayload)
+    setSecureItem(`streamer_active_session_${userId}`, sessionPayload)
+
+    setIsStreaming(true)
+    setStreamStartTime(Date.now())
+    setAdsAiredCount(0)
+    setStreamElapsed(0)
+
+    // Send to backend
+    startStreamSession(sessionPayload)
   }
 
   const endStream = () => {
@@ -828,6 +908,9 @@ export default function StreamerDashboard() {
   const liveAds     = playlist.filter(a => a.status === 'live' && (a.remaining_count === undefined || a.remaining_count > 0))
   const upcomingAds = playlist.filter(a => a.status === 'upcoming' && (a.remaining_count === undefined || a.remaining_count > 0))
   const tierMeta    = TIER_META[user?.tier] || TIER_META['Tier 5']
+
+  // When streaming, only rotate through selected ads
+  const streamingAds = isStreaming ? selectedStreamAds : liveAds
 
   const step1Valid = streamTitle.trim() && streamLink.trim() && streamContent
 
@@ -1374,7 +1457,7 @@ export default function StreamerDashboard() {
                     </div>
                   </div>
 
-                  {/* Ad counter cards */}
+                  {/* Ad counter cards — only counting selected ads for this stream */}
                   <div className="sd-stats-row" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom:'1.25rem' }}>
                     <div className="sd-stat-card sd-stat-card-green">
                       <div className="sd-stat-value">{adsAiredCount}</div>
@@ -1382,18 +1465,18 @@ export default function StreamerDashboard() {
                       <div className="sd-stat-sub">Since stream started</div>
                     </div>
                     <div className="sd-stat-card highlight">
-                      <div className="sd-stat-value">{liveAds.length}</div>
+                      <div className="sd-stat-value">{selectedStreamAds.length}</div>
                       <div className="sd-stat-label">Currently in rotation</div>
                       <div className="sd-stat-sub">Live ads playing now</div>
                     </div>
                     <div className="sd-stat-card">
-                      <div className="sd-stat-value">{upcomingAds.length}</div>
+                      <div className="sd-stat-value">{selectedStreamAds.filter((_, i) => i > activeIndex).length}</div>
                       <div className="sd-stat-label">Upcoming in stream</div>
                       <div className="sd-stat-sub">Queued and ready</div>
                     </div>
                   </div>
 
-                  {/* Now playing + ad queue */}
+                  {/* Now playing — only selected ads for this stream */}
                   <div className="sd-row-2" style={{ marginBottom: '1.25rem' }}>
                     <div className="sd-card">
                       <div className="sd-card-header">
@@ -1403,11 +1486,11 @@ export default function StreamerDashboard() {
                         </div>
                         <span className="sd-now-badge" style={{ alignSelf:'center' }}>● LIVE</span>
                       </div>
-                      {liveAds.length === 0
-                        ? <p className="sd-empty">No live ads.</p>
+                      {selectedStreamAds.length === 0
+                        ? <p className="sd-empty">No ads selected for this stream.</p>
                         : (
                           <div className="sd-live-list">
-                            {liveAds.map((ad, i) => {
+                            {selectedStreamAds.map((ad, i) => {
                               const isPlaying = i === activeIndex
                               const prog = progressMap[i] || 0
                               return (
@@ -1415,14 +1498,19 @@ export default function StreamerDashboard() {
                                   <div className="sd-live-indicator-dot" style={{ background: isPlaying ? '#10B981' : '#e2e8f0' }}/>
                                   <div className="sd-live-info">
                                     <span className="sd-live-name">{ad.name}</span>
-                                    <span className="sd-live-brand">{ad.brand} · {ad.duration}s</span>
+                                    <span className="sd-live-brand">{ad.brand} · {ad.duration}s · {ad.type?.replace('_',' ')}</span>
                                   </div>
                                   {isPlaying && (
                                     <div className="sd-mini-progress">
                                       <div className="sd-mini-fill" style={{ width: `${prog}%` }}/>
                                     </div>
                                   )}
-                                  {isPlaying && <span className="sd-now-badge">NOW</span>}
+                                  {isPlaying
+                                    ? <span className="sd-now-badge">NOW</span>
+                                    : <span className="sd-days-badge" style={{ background: i < activeIndex ? '#ECFDF5' : '#EEF2FF', color: i < activeIndex ? '#059669' : '#3B5BFF', fontSize: '0.7rem' }}>
+                                        {i < activeIndex ? 'Played' : `Queued #${i - activeIndex}`}
+                                      </span>
+                                  }
                                 </div>
                               )
                             })}
@@ -1431,35 +1519,61 @@ export default function StreamerDashboard() {
                       }
                     </div>
 
+                    {/* Upcoming queue — shows remaining ads with reorder */}
                     <div className="sd-card">
                       <div className="sd-card-header">
                         <div>
                           <div className="sd-eyebrow">Queued</div>
                           <h2 className="sd-card-title">Upcoming <em>ads</em></h2>
                         </div>
-                        <span className="sd-days-badge blue" style={{ alignSelf:'center' }}>{upcomingAds.length} queued</span>
+                        <span className="sd-days-badge blue" style={{ alignSelf:'center' }}>{selectedStreamAds.filter((_, i) => i > activeIndex).length} queued</span>
                       </div>
-                      {upcomingAds.length === 0
-                        ? <p className="sd-empty">No upcoming ads queued.</p>
-                        : (
+                      {(() => {
+                        const queuedAds = selectedStreamAds.filter((_, i) => i > activeIndex)
+                        if (queuedAds.length === 0) {
+                          return <p className="sd-empty">No upcoming ads queued.</p>
+                        }
+                        return (
                           <div className="sd-live-list">
-                            {upcomingAds.map((ad, i) => (
-                              <div key={ad.id} className="sd-live-row">
-                                <div className="sd-live-indicator-dot" style={{ background: '#C7D2FE' }}/>
-                                <div className="sd-live-info">
-                                  <span className="sd-live-name">{ad.name}</span>
-                                  <span className="sd-live-brand">{ad.brand} · {ad.duration}s · starts in {ad.daysLeft}d</span>
+                            {queuedAds.map((ad, qi) => {
+                              const realIndex = selectedStreamAds.findIndex(s => s.id === ad.id)
+                              const countdown = countdownMap[realIndex]
+                              return (
+                                <div key={ad.id} className="sd-live-row" style={{ alignItems: 'center' }}>
+                                  <div className="sd-live-indicator-dot" style={{ background: '#C7D2FE' }}/>
+                                  <div className="sd-live-info">
+                                    <span className="sd-live-name">{ad.name}</span>
+                                    <span className="sd-live-brand">
+                                      {ad.brand} · {ad.duration}s · {ad.type?.replace('_',' ')}
+                                      {countdown > 0 && ` · plays in ${countdown}s`}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '0.25rem', marginLeft: 'auto' }}>
+                                    <button
+                                      className="sd-btn-ghost sd-btn-xs"
+                                      disabled={realIndex <= activeIndex + 1}
+                                      onClick={() => moveStreamAd(realIndex, -1)}
+                                      title="Move up"
+                                      style={{ padding: '0.25rem 0.45rem', fontSize: '0.75rem', opacity: realIndex <= activeIndex + 1 ? 0.3 : 1 }}
+                                    >▲</button>
+                                    <button
+                                      className="sd-btn-ghost sd-btn-xs"
+                                      disabled={realIndex >= selectedStreamAds.length - 1}
+                                      onClick={() => moveStreamAd(realIndex, 1)}
+                                      title="Move down"
+                                      style={{ padding: '0.25rem 0.45rem', fontSize: '0.75rem', opacity: realIndex >= selectedStreamAds.length - 1 ? 0.3 : 1 }}
+                                    >▼</button>
+                                  </div>
                                 </div>
-                                <span className="sd-days-badge blue">{ad.type?.replace('_',' ')}</span>
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         )
-                      }
+                      })()}
                     </div>
                   </div>
 
-                  {/* OBS overlay link */}
+                  {/* OBS overlay link — long encoded link */}
                   <div className="sd-card">
                     <div className="sd-card-header">
                       <div>
@@ -1468,7 +1582,7 @@ export default function StreamerDashboard() {
                       </div>
                     </div>
                     <div className="sd-link-row">
-                      <input className="sd-input sd-input-mono" value={overlayLink} readOnly/>
+                      <input className="sd-input sd-input-mono" value={overlayLink} readOnly style={{ fontSize: '0.72rem' }}/>
                       <button className={`sd-btn-primary ${copiedLink ? 'copied' : ''}`} onClick={copyOverlayLink}>
                         {copiedLink ? '✓ Copied' : 'Copy link'}
                       </button>
