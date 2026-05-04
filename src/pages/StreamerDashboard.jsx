@@ -220,6 +220,7 @@ export default function StreamerDashboard() {
   const [previewAd,          setPreviewAd]           = useState(null)
   const [walletInfo,         setWalletInfo]          = useState({ account_number: '', ifsc_code: '', account_holder_name: '', upi_id: '' })
   const [completedStreams,   setCompletedStreams]    = useState([])
+  const [expandedStreamId,   setExpandedStreamId]    = useState(null)
   const [totalWalletEarnings, setTotalWalletEarnings] = useState(0)
   const [currentMonthEarnings, setCurrentMonthEarnings] = useState(0)
   const [currentMonthLabel,  setCurrentMonthLabel]   = useState('')
@@ -548,6 +549,7 @@ export default function StreamerDashboard() {
 
             const realPlays = realPlaysMap[`${ad.campaign_id}_${ad.ad_name}`] || realPlaysMap[`${ad.campaign_db_id}_${ad.ad_name}`] || 24
 
+            const adThumb = ad.ad_media_url || layout.media_url || layout.image_url
             return {
               id: `approved_${ad.id}`,
               backendId: ad.id,
@@ -556,11 +558,12 @@ export default function StreamerDashboard() {
               brand: ad.brand_name,
               brandCategory: ad.brand_category,
               duration: ad.show_duration || 10,
-              status: ad.status === 'approved' ? 'live' : ad.status,
+              status: (ad.status === 'approved' || ad.status === 'partially_used') ? 'live' : ad.status,
               daysLeft: 0,
               earnings: '—',
               amountPerPlay: ad.amount_per_play || 0,
               type: ad.ad_media_type || 'text',
+              media_url: adThumb,
               remaining_count: ad.remaining_count,
               approved_count: ad.approved_count,
               used_count: ad.used_count || 0,
@@ -802,6 +805,7 @@ export default function StreamerDashboard() {
         remaining_count: req.approvedCount,
         approved_count: req.approvedCount,
         used_count: 0,
+        media_url: adToApprove?.image_url || adToApprove?.media_url,
         gridSelection: adToApprove?.grid_cell_placement
           ? adToApprove.grid_cell_placement.split(',').map(Number)
           : [],
@@ -1084,10 +1088,12 @@ export default function StreamerDashboard() {
       const adsPayload = selectedStreamAds.map(ad => {
         const plays_start = initialPlays[ad.id] || ad.plays_per_stream || ad.approved_count || 24
         const plays_end   = finalPlays[ad.id] ?? 0
-        const estimated_cost_cents = Math.round((ad.amountPerPlay || 0) * plays_start * 100)
+        const plays_occurred = Math.max(0, plays_start - plays_end)
+        const estimated_cost_cents = Math.round((ad.amountPerPlay || 0) * plays_occurred * 100)
         return {
           ad_id: ad.backendId,
           ad_name: ad.name,
+          brand_name: ad.brand,
           plays_per_stream_start: plays_start,
           plays_per_stream_end: plays_end,
           estimated_cost_cents
@@ -1404,9 +1410,18 @@ export default function StreamerDashboard() {
                     <div className="sd-live-list">
                       {liveAds.map((ad, i) => {
                         const isPlaying = i === activeIndex
+                        const thumbUrl = ad.media_url || ad.ads?.[0]?.media_url
                         return (
                           <div key={ad.id} className={`sd-live-row ${isPlaying ? 'now-playing' : ''}`}>
                             <div className="sd-live-indicator-dot" style={{ background: isPlaying ? '#10B981' : '#e2e8f0' }}/>
+                            
+                            <div className="sd-live-thumb small">
+                              {thumbUrl 
+                                ? <img src={thumbUrl} alt="" />
+                                : <div className="sd-live-thumb-placeholder">{ad.brand?.[0] || 'A'}</div>
+                              }
+                            </div>
+
                             <div className="sd-live-info">
                               <span className="sd-live-name">{ad.name}</span>
                               <span className="sd-live-brand">
@@ -1499,25 +1514,34 @@ export default function StreamerDashboard() {
                               playlistTab === 'live' && <span className="sd-drag-handle">⠿</span>
                             )}
 
-                          <div className="sd-pl-info">
-                            <span className="sd-pl-name">{ad.name}</span>
-                            <span className="sd-pl-meta">
-                              {ad.brand} · {ad.type?.replace('_',' ')}
-                              {ad.amountPerPlay > 0 && ` · ₹${ad.amountPerPlay.toFixed(2)} / play`}
-                              {ad.plays_per_stream != null && (
-                                <span style={{
-                                  marginLeft: '0.4rem',
-                                  fontWeight: 600,
-                                  color: ad.plays_per_stream === 0 ? '#EF4444'
-                                       : ad.plays_per_stream <= 2   ? '#F59E0B'
-                                       : '#059669'
-                                }}>
-                                  · {ad.plays_per_stream === 0
-                                      ? '⚠ Stream quota done'
-                                      : `${ad.plays_per_stream} play${ad.plays_per_stream !== 1 ? 's' : ''} / stream`}
-                                </span>
-                              )}
-                            </span>
+                          <div className="sd-playlist-row-wrap" style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '0.85rem' }}>
+                            <div className="sd-live-thumb">
+                              {(ad.media_url || ad.ads?.[0]?.media_url) 
+                                ? <img src={ad.media_url || ad.ads?.[0]?.media_url} alt="" />
+                                : <div className="sd-live-thumb-placeholder">{ad.brand?.[0] || 'A'}</div>
+                              }
+                            </div>
+
+                            <div className="sd-pl-info">
+                              <span className="sd-pl-name">{ad.name}</span>
+                              <span className="sd-pl-meta">
+                                {ad.brand} · {ad.type?.replace('_',' ')}
+                                {ad.amountPerPlay > 0 && ` · ₹${ad.amountPerPlay.toFixed(2)} / play`}
+                                {ad.plays_per_stream != null && (
+                                  <span style={{
+                                    marginLeft: '0.4rem',
+                                    fontWeight: 600,
+                                    color: ad.plays_per_stream === 0 ? '#EF4444'
+                                         : ad.plays_per_stream <= 2   ? '#F59E0B'
+                                         : '#059669'
+                                  }}>
+                                    · {ad.plays_per_stream === 0
+                                        ? '⚠ Stream quota done'
+                                        : `${ad.plays_per_stream} play${ad.plays_per_stream !== 1 ? 's' : ''} / stream`}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
                           </div>
                           <div className="sd-pl-right">
                             {ad.status === 'upcoming' && (
@@ -1781,9 +1805,19 @@ export default function StreamerDashboard() {
                               const prog = progressMap[i] || 0
                               const playsLeft = streamPlaysMap[ad.id]
                               const exhausted = playsLeft !== undefined && playsLeft === 0
+                              const thumbUrl = ad.ads?.[0]?.media_url || ad.media_url || (ad.layout_json?.image_url)
+                              
                               return (
                                 <div key={ad.id} className={`sd-live-row ${isPlaying ? 'now-playing' : ''}`} style={{ opacity: exhausted ? 0.5 : 1 }}>
                                   <div className="sd-live-indicator-dot" style={{ background: exhausted ? '#EF4444' : isPlaying ? '#10B981' : '#e2e8f0' }}/>
+                                  
+                                  <div className="sd-live-thumb">
+                                    {thumbUrl 
+                                      ? <img src={thumbUrl} alt="" />
+                                      : <div className="sd-live-thumb-placeholder">{ad.brand?.[0] || 'A'}</div>
+                                    }
+                                  </div>
+
                                   <div className="sd-live-info">
                                     <span className="sd-live-name">{ad.name}</span>
                                     <span className="sd-live-brand">
@@ -1836,6 +1870,14 @@ export default function StreamerDashboard() {
                               return (
                                 <div key={ad.id} className="sd-live-row" style={{ alignItems: 'center' }}>
                                   <div className="sd-live-indicator-dot" style={{ background: '#C7D2FE' }}/>
+                                  
+                                  <div className="sd-live-thumb small">
+                                    {(ad.ads?.[0]?.media_url || ad.media_url) 
+                                      ? <img src={ad.ads?.[0]?.media_url || ad.media_url} alt="" />
+                                      : <div className="sd-live-thumb-placeholder">{ad.brand?.[0] || 'A'}</div>
+                                    }
+                                  </div>
+
                                   <div className="sd-live-info">
                                     <span className="sd-live-name">{ad.name}</span>
                                     <span className="sd-live-brand">
@@ -2283,13 +2325,55 @@ export default function StreamerDashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {completedStreams.map((s, i) => (
-                            <tr key={i}>
-                              <td className="sd-muted">{new Date(s.stream_date).toLocaleDateString()}</td>
-                              <td><strong>{s.stream_title || 'Untitled Stream'}</strong></td>
-                              <td><strong style={{ color: '#10B981' }}>₹{(s.total_earned_cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-                            </tr>
-                          ))}
+                          {completedStreams.map((s, i) => {
+                            const isExpanded = expandedStreamId === s.id
+                            return (
+                              <div key={s.id || i} style={{ display: 'contents' }}>
+                                <tr onClick={() => setExpandedStreamId(isExpanded ? null : s.id)} style={{ cursor: 'pointer' }}>
+                                  <td className="sd-muted">
+                                    <span style={{ 
+                                      marginRight: '0.6rem', 
+                                      display: 'inline-block', 
+                                      fontSize: '0.6rem',
+                                      transition: 'transform 0.2s', 
+                                      transform: isExpanded ? 'rotate(90deg)' : 'none',
+                                      color: '#94A3B8'
+                                    }}>▶</span>
+                                    {new Date(s.stream_date).toLocaleDateString()}
+                                  </td>
+                                  <td><strong>{s.stream_title || 'Untitled Stream'}</strong></td>
+                                  <td><strong style={{ color: '#10B981' }}>₹{(s.total_earned_cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                                </tr>
+                                {isExpanded && (
+                                  <tr>
+                                    <td colSpan="3" style={{ padding: '0', background: '#F8FAFC' }}>
+                                      <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #E2E8F0', animation: 'sd-slide-down 0.2s ease-out' }}>
+                                        <div className="sd-eyebrow" style={{ marginBottom: '0.75rem', fontSize: '0.65rem' }}>Earnings Breakdown</div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                                          {(s.ads || []).length === 0 ? (
+                                            <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontStyle: 'italic' }}>No ad data for this stream</div>
+                                          ) : (
+                                            (s.ads || []).map((ad, ai) => (
+                                              <div key={ai} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                  <span style={{ fontSize: '0.85rem', fontWeight: '500', color: '#1E293B' }}>{ad.brand_name || 'Brand'}</span>
+                                                  <span style={{ fontSize: '0.7rem', color: '#64748B' }}>{ad.ad_name}</span>
+                                                </div>
+                                                <div style={{ textAlign: 'right' }}>
+                                                  <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#059669' }}>₹{(ad.earned_cents / 100).toFixed(2)}</div>
+                                                  <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>{ad.plays_used} plays</div>
+                                                </div>
+                                              </div>
+                                            ))
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </div>
+                            )
+                          })}
                         </tbody>
                       </table>
                     )}

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { fetchStreamerCallback, fetchStreamerUser, saveStreamerSession } from '../api/auth'
 
@@ -6,7 +6,12 @@ export default function AuthCallback() {
   const navigate = useNavigate()
   const location = useLocation()
 
+  const called = useRef(false)
+
   useEffect(() => {
+    if (called.current) return
+    called.current = true
+
     const handleCallback = async () => {
       const data = await fetchStreamerCallback(location.search)
       if (data) {

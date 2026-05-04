@@ -493,6 +493,12 @@ export default function AdvertiserDashboard() {
         setBrandsList(prev => [...prev, newBrand])
         setShowAddBrandModal(false)
         setRefresh(r => r + 1)
+        // Refresh wallet too as creating a brand might have deducted budget
+        fetch(`${ADV_BASE}/api/accounts/${id}/billing/summary`, { credentials: 'include' })
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+            if (data?.wallet) setWallet(data.wallet)
+          })
         toast.success('Brand added successfully!')
       } else {
         const err = await res.json()
@@ -510,11 +516,6 @@ export default function AdvertiserDashboard() {
     const idempotencyKey = `allocate_${brandId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     try {
-      // Find the current brand to get its existing allocated budget
-      const currentBrand = brandsList.find(b => b.id === brandId)
-      const existingBudget = parseFloat(currentBrand?.allocated_budget_rupees || 0)
-      const newTotal = existingBudget + parseFloat(amount)
-
       const res = await fetch(`${ADV_BASE}/api/accounts/${id}/billing/brands/${brandId}/allocate`, {
         method: 'POST',
         headers: { 
@@ -528,11 +529,12 @@ export default function AdvertiserDashboard() {
         })
       })
       if (res.ok) {
-        const updatedBrand = await res.json()
-        setBrandsList(prev => prev.map(b => b.id === brandId ? updatedBrand : b))
+        const data = await res.json()
+        setWallet(data.wallet)
+        setBrandsList(prev => prev.map(b => b.id === brandId ? data.brand : b))
         setRefresh(r => r + 1)
         setShowAllocateModal(false)
-        toast.success(`Successfully allocated ₹${amount} to ${updatedBrand.brand_name}`)
+        toast.success(`Successfully allocated ₹${amount} to ${data.brand.brand_name}`)
       } else {
         const err = await res.json()
         toast.error(err.detail || 'Failed to allocate budget')
@@ -682,8 +684,14 @@ export default function AdvertiserDashboard() {
 
 
   const totalSpent    = isSingleBrand ? totalEstimatedSpend : parseFloat(wallet.spent_rupees || 0)
-  // For Single Brand, the wallet balance is treated as the total budget source to deduct from
-  const totalBudget   = isSingleBrand ? parseFloat(wallet.balance_rupees || 0) : (parseFloat(wallet.budget_rupees || wallet.ad_budget_rupees || 0) || parseFloat(wallet.budget_rupees || 0))
+  // For Single Brand, the total budget is balance + budget_rupees (which tracks allocated funds)
+  const totalBudget   = isSingleBrand 
+    ? (parseFloat(wallet.balance_rupees || 0) + parseFloat(wallet.budget_rupees || 0)) 
+    : (parseFloat(wallet.budget_rupees || 0) || parseFloat(wallet.ad_budget_rupees || 0))
+  
+  // Total Balance should represent the available funds. 
+  // For Agencies, it's the unallocated wallet balance.
+  // For Single Brands, it's (Total Deposited - Total Spent).
   const totalBalance  = isSingleBrand ? (totalBudget - totalSpent) : parseFloat(wallet.balance_rupees || 0)
   const totalCampaigns = allCampaigns.length
 
@@ -1002,8 +1010,8 @@ export default function AdvertiserDashboard() {
               {/* Agency totals with budget */}
               <div className="ad-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                 {[
-                  { label: 'Total Left', value: `₹${totalBalance.toLocaleString()}`, sub: 'Unallocated in wallet', highlight: true },
-                  { label: 'Total Allocated', value: `₹${totalBudget.toLocaleString()}`, sub: 'Across all brands' },
+                  { label: isSingleBrand ? 'Total Balance' : 'Total Left', value: `₹${totalBalance.toLocaleString()}`, sub: isSingleBrand ? 'Remaining across campaigns' : 'Unallocated in wallet', highlight: true },
+                  { label: isSingleBrand ? 'Total Deposited' : 'Total Allocated', value: `₹${totalBudget.toLocaleString()}`, sub: isSingleBrand ? 'All time funds added' : 'Across all brands' },
                   { label: 'Total Spent', value: `₹${totalSpent.toLocaleString()}`, sub: 'By all campaigns' },
                   { label: 'Total Campaigns', value: totalCampaigns, sub: 'Active & completed' },
                 ].map((s, i) => (
