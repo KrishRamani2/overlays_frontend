@@ -2685,9 +2685,9 @@ export default function StreamerDashboard() {
                         top: `${(bounds.y / 1080) * 100}%`,
                         width: `${(bounds.w / 1920) * 100}%`,
                         height: `${(bounds.h / 1080) * 100}%`,
-                        background: bannerBg || 'transparent',
+                        background: 'transparent',
                         borderRadius: '0px', 
-                        boxShadow: bannerBg ? '0 10px 30px rgba(0,0,0,0.25)' : 'none',
+                        boxShadow: 'none',
                         overflow: 'hidden',
                         zIndex: 1
                       }}>
