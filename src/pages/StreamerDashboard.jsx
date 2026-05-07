@@ -250,7 +250,10 @@ export default function StreamerDashboard() {
       totalLifetimeCents += (stream.total_earned_cents || 0)
       const ads = stream.ads || []
       ads.forEach(ad => {
-        const name = ad.brand_name || ad.ad_name?.split(' — ')[0] || 'Unknown Brand'
+        // Try to find the actual brand name from the current playlist using ad_id or ad_name
+        const playlistAd = playlist.find(p => p.backendId === ad.ad_id || p.name === ad.ad_name)
+        const name = ad.brand_name || ad.brand || playlistAd?.brand || playlistAd?.brand_name || 'Unknown Brand'
+
         if (!brandsMap[name]) {
           brandsMap[name] = { 
             id: name.toLowerCase().replace(/\s+/g, '-'),
@@ -274,7 +277,8 @@ export default function StreamerDashboard() {
 
     // 2. Process Current Playlist (Active brands)
     playlist.forEach(ad => {
-      const name = ad.brand || ad.brand_name || ad.name?.split(' — ')[0] || 'Unknown Brand'
+      const name = ad.brand_name || ad.brand || 'Unknown Brand'
+      const isActive = ad.plays_per_stream !== 0
       if (!brandsMap[name]) {
         brandsMap[name] = { 
           id: name.toLowerCase().replace(/\s+/g, '-'),
@@ -285,10 +289,12 @@ export default function StreamerDashboard() {
           earned_cents: 0, 
           streamsCount: 0, 
           lastStreamDate: 'Never',
-          status: 'active'
+          status: isActive ? 'active' : 'ended'
         }
       } else {
-        brandsMap[name].status = 'active'
+        if (isActive) {
+          brandsMap[name].status = 'active'
+        }
       }
     })
 
@@ -699,6 +705,19 @@ export default function StreamerDashboard() {
               streamPlaysRef.current = { ...streamPlaysRef.current, [adId]: newPlays }
               setStreamPlaysMap(prev => ({ ...prev, [adId]: newPlays }))
 
+              // ── Sync to playlist and selectedStreamAds for UI everywhere ──
+              setPlaylist(prev => prev.map(a => a.id === adId ? { ...a, plays_per_stream: newPlays } : a))
+              setSelectedStreamAds(prev => prev.map(a => a.id === adId ? { ...a, plays_per_stream: newPlays } : a))
+
+              // ── Save to DB immediately ──
+              if (activeAd.backendId) {
+                const userId = user?.id || user?.uid || id;
+                if (userId && activeAd.campaignId) {
+                  updatePlaysPerStream(userId, activeAd.campaignId, activeAd.backendId, { plays_per_stream: newPlays }).catch(e => console.error(e))
+                }
+                updateAdPlaysPerStream(activeAd.backendId, { plays_per_stream: newPlays }).catch(e => console.error(e))
+              }
+
               if (newPlays === 0) {
                 // Alert the streamer that this ad's stream quota is exhausted
                 setTimeout(() => {
@@ -1071,9 +1090,14 @@ export default function StreamerDashboard() {
     const allAdsWithBackendId = selectedStreamAds.filter(ad => ad.backendId && ad.campaignId)
     const updatePromises = allAdsWithBackendId.flatMap(ad => {
       const playsRemaining = finalPlays[ad.id] ?? 0
+      const plays_start = initialPlays[ad.id] || ad.plays_per_stream || ad.approved_count || 24
+      const plays_occurred = Math.max(0, plays_start - playsRemaining)
+      const new_remaining_count = Math.max(0, (ad.remaining_count || 0) - plays_occurred)
+      
       return [
         updatePlaysPerStream(userId, ad.campaignId, ad.backendId, { plays_per_stream: playsRemaining }),
-        updateAdPlaysPerStream(ad.backendId, { plays_per_stream: playsRemaining })
+        updateAdPlaysPerStream(ad.backendId, { plays_per_stream: playsRemaining }),
+        updateApprovedAd(userId, ad.backendId, { remaining_count: new_remaining_count })
       ]
     })
 
@@ -1147,8 +1171,8 @@ export default function StreamerDashboard() {
     setGoLiveStep(1)
   }
 
-  const liveAds     = playlist.filter(a => a.status === 'live' && (a.remaining_count === undefined || a.remaining_count > 0))
-  const upcomingAds = playlist.filter(a => a.status === 'upcoming' && (a.remaining_count === undefined || a.remaining_count > 0))
+  const liveAds     = playlist.filter(a => a.status === 'live' && (a.plays_per_stream === undefined || a.plays_per_stream > 0))
+  const upcomingAds = playlist.filter(a => a.status === 'upcoming' && (a.plays_per_stream === undefined || a.plays_per_stream > 0))
   const tierMeta    = TIER_META[user?.tier] || TIER_META['Tier 5']
 
   // When streaming, only rotate through selected ads
@@ -1468,7 +1492,7 @@ export default function StreamerDashboard() {
                 {[
                   { id: 'live',     label: 'Now Live',  count: liveAds.length },
                   { id: 'upcoming', label: 'Upcoming',  count: upcomingAds.length },
-                  { id: 'ended',    label: 'Ended',     count: playlist.filter(a => a.status === 'ended' || a.remaining_count === 0).length },
+                  { id: 'ended',    label: 'Ended',     count: playlist.filter(a => a.status === 'ended' || a.plays_per_stream === 0).length },
                 ].map(t => (
                   <button
                     key={t.id}
@@ -1485,7 +1509,7 @@ export default function StreamerDashboard() {
                 {(() => {
                   const items = playlistTab === 'live' ? liveAds 
                               : playlistTab === 'upcoming' ? upcomingAds
-                              : playlist.filter(a => a.status === 'ended' || a.remaining_count === 0)
+                              : playlist.filter(a => a.status === 'ended' || a.plays_per_stream === 0)
 
                   if (items.length === 0) {
                     return <p className="sd-empty">No {playlistTab} ads.</p>
@@ -2291,7 +2315,7 @@ export default function StreamerDashboard() {
               <div className="sd-stats-row" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom:'1.25rem' }}>
                 {[
                   { label: 'Total wallet balance',  value: `₹${(totalWalletEarnings / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,  sub: 'Live from DB', highlight: true },
-                  { label: 'This month',          value: DUMMY_EARNINGS.thisMonth, sub: 'June 2026' },
+                  { label: 'This month',          value: `₹${(currentMonthEarnings / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: currentMonthLabel || 'Current month' },
                   { label: 'Completed streams',         value: completedStreams.length, sub: 'With ads' },
                   { label: 'Avg per stream',      value: `₹${(completedStreams.length > 0 ? (totalWalletEarnings / 100 / completedStreams.length) : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: 'Per ad-enabled stream' },
                 ].map((s, i) => (
