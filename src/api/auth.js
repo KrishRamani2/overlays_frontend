@@ -432,3 +432,19 @@ export async function endStreamSession(data) {
     return null
   }
 }
+
+export async function updateActiveStreamAds(streamerId, selectedAds) {
+  try {
+    const res = await fetch(`${STREAMER_BASE}/api/streamer/streams/active/ads`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ streamer_id: streamerId, selected_ads: selectedAds }),
+      credentials: 'include'
+    })
+    if (!res.ok) throw new Error('Failed to update active stream ads')
+    return await res.json()
+  } catch (err) {
+    console.error(err)
+    return null
+  }
+}

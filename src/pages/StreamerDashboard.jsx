@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef, useState, useCallback } from 'react'
-import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd, startStreamSession, updatePlaysPerStream, getPlaysPerStream, createPlaysPerStream, updateAdPlaysPerStream, fetchStreamerWallet, updateStreamerWallet, saveStreamEarnings, endStreamSession } from '../api/auth'
+import { getStreamerMe, logout, apiFetch, fetchStreamerUser, fetchTierBrands, postApprovedAd, fetchApprovedAds, postRejectedAd, fetchRejectedAds, updateApprovedAd, startStreamSession, updatePlaysPerStream, getPlaysPerStream, createPlaysPerStream, updateAdPlaysPerStream, fetchStreamerWallet, updateStreamerWallet, saveStreamEarnings, endStreamSession, updateActiveStreamAds } from '../api/auth'
 import { useParams, useNavigate } from 'react-router-dom'
 import { setSecureItem, getSecureItem, removeSecureItem } from '../utils/secureStorage'
 import './StreamerDashboard.css'
@@ -244,6 +244,10 @@ export default function StreamerDashboard() {
   const gapRef        = useRef(20)
   const draggedRef    = useRef(null)
   const streamPlaysRef= useRef({}) // live ref so sync loop can read without stale closure
+  const cycleRef      = useRef(null)
+  const checkForNewAdsRef = useRef(null)
+  const initialPlaysRef = useRef({}) // tracks the starting plays_per_stream for each ad (set at stream start, added to when mid-stream ads arrive)
+  const prevActiveAdRef = useRef(null) // tracks the last ad ID that was counted as "played" — persists across sync restarts
 
   // ── Derived state for live brands and statistics ──
   const { liveBrands, brandStats } = useMemo(() => {
@@ -454,6 +458,10 @@ export default function StreamerDashboard() {
     if (cachedStreamPlays) {
       streamPlaysRef.current = cachedStreamPlays
       setStreamPlaysMap(cachedStreamPlays)
+    }
+    const cachedInitialPlays = getSecureItem(`streamer_initial_plays_${userId}`)
+    if (cachedInitialPlays) {
+      initialPlaysRef.current = cachedInitialPlays
     }
 
     // ── Restore active stream session on page refresh ──
@@ -780,23 +788,28 @@ export default function StreamerDashboard() {
         const existingAdNames     = new Set(approvedData.map(a => a.ad_name).filter(Boolean))
 
         const freshItems = []
+        const realPlaysMap = {}
+        const realPaysMap = {}
+
         brandData.items.forEach(brand => {
-          if (!approvedBrandsSet.has(brand.brand_name)) return // only already-approved brands
           ;(brand.campaigns || []).forEach(camp => {
-            const campaignId = camp.campaign_id || camp.id
-            if (approvedCampaignSet.has(campaignId)) return // campaign already in playlist
             const budget = camp.estimated_cost_rupees || 0
             const playCount = camp.play_count || 1
             const amountPerPlay = budget / playCount
+            
             ;(camp.ads || []).forEach(ad => {
               const adName = ad.ad_name || camp.campaign_name
-              if (existingAdNames.has(adName)) return // already approved
-              freshItems.push({ brand, camp, ad, campaignId, amountPerPlay })
+              realPlaysMap[`${camp.campaign_id}_${adName}`] = ad.plays_per_stream || 24
+              realPlaysMap[`${camp.id}_${adName}`] = ad.plays_per_stream || 24
+              realPaysMap[`${camp.campaign_id}_${adName}`] = amountPerPlay
+              realPaysMap[`${camp.id}_${adName}`] = amountPerPlay
+
+              if (approvedBrandsSet.has(brand.brand_name) && !approvedCampaignSet.has(camp.campaign_id || camp.id) && !existingAdNames.has(adName)) {
+                freshItems.push({ brand, camp, ad, campaignId: camp.campaign_id || camp.id, amountPerPlay })
+              }
             })
           })
         })
-
-        if (freshItems.length === 0) return
 
         // Auto-approve each new ad
         const newPlaylistItems = []
@@ -812,9 +825,7 @@ export default function StreamerDashboard() {
             amount_per_play: amountPerPlay,
             ad_media_url: ad.image_url || ad.media_url,
             ad_media_type: ad.ad_type,
-            grid_selection: ad.grid_cell_placement
-              ? ad.grid_cell_placement.split(',').map(Number)
-              : [],
+            grid_selection: ad.grid_cell_placement ? (Array.isArray(ad.grid_cell_placement) ? ad.grid_cell_placement.map(Number) : ad.grid_cell_placement.split(',').map(Number)) : [],
             show_duration: ad.duration_seconds || 15,
             layout_json: ad
           })
@@ -835,52 +846,109 @@ export default function StreamerDashboard() {
               approved_count: camp.play_count || 10,
               used_count: 0,
               media_url: ad.image_url || ad.media_url,
-              gridSelection: ad.grid_cell_placement
-                ? ad.grid_cell_placement.split(',').map(Number)
-                : [],
+              gridSelection: ad.grid_cell_placement ? (Array.isArray(ad.grid_cell_placement) ? ad.grid_cell_placement.map(Number) : ad.grid_cell_placement.split(',').map(Number)) : [],
               ads: [ad],
+              layout_json: ad,
               plays_per_stream: ad.plays_per_stream || 24
             })
           }
         }
 
-        if (newPlaylistItems.length === 0) return
+        // Map existing approved data to check for manually approved ads not yet in rotation
+        const mappedApprovedData = approvedData.map(ad => {
+          const layout = ad.layout_json || {}
+          let gridCellsStr = ''
+          if (layout.grid_cell_placement) {
+            gridCellsStr = Array.isArray(layout.grid_cell_placement) ? layout.grid_cell_placement.join(',') : String(layout.grid_cell_placement)
+          } else if (ad.grid_selection) {
+            gridCellsStr = Array.isArray(ad.grid_selection) ? ad.grid_selection.join(',') : String(ad.grid_selection)
+          }
 
-        // Add to playlist
+          const originalAd = {
+            ...layout,
+            media_url: ad.ad_media_url || layout.media_url || layout.image_url,
+            ad_type: ad.ad_media_type || layout.ad_type,
+            grid_cell_placement: gridCellsStr || '6,7,8'
+          }
+
+          const realPlays = realPlaysMap[`${ad.campaign_id}_${ad.ad_name}`] || 24
+          const realPays = realPaysMap[`${ad.campaign_id}_${ad.ad_name}`] || 0
+
+          return {
+            id: `approved_${ad.id}`,
+            backendId: ad.id,
+            campaignId: ad.campaign_id,
+            name: ad.ad_name,
+            brand: ad.brand_name,
+            brandCategory: ad.brand_category,
+            duration: ad.show_duration || 10,
+            status: (ad.status === 'approved' || ad.status === 'partially_used') ? 'live' : ad.status,
+            daysLeft: 0,
+            earnings: '—',
+            amountPerPlay: ad.amount_per_play || realPays || 0,
+            type: ad.ad_media_type || 'text',
+            media_url: ad.ad_media_url || layout.media_url || layout.image_url,
+            remaining_count: ad.remaining_count,
+            approved_count: ad.approved_count,
+            used_count: ad.used_count || 0,
+            plays_per_stream: ad.plays_per_stream || realPlays || ad.remaining_count || ad.approved_count || 24,
+            gridSelection: ad.grid_selection || [],
+            ads: [originalAd],
+            layout_json: layout
+          }
+        })
+
+        // Update playlist to reflect latest data
         setPlaylist(p => {
-          const next = [...p, ...newPlaylistItems].sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
+          // Merge to avoid duplicates
+          const pMap = new Map(p.map(item => [item.backendId, item]))
+          mappedApprovedData.forEach(item => pMap.set(item.backendId, item))
+          newPlaylistItems.forEach(item => pMap.set(item.backendId, item))
+          const next = Array.from(pMap.values()).sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
           setSecureItem(`streamer_playlist_${userId}`, next)
           return next
         })
 
-        // Add to live queue only if grid preference matches
-        setSelectedPositions(currentPositions => {
-          const matchingAds = newPlaylistItems.filter(ad => {
-            if (!currentPositions || currentPositions.length === 0) return true
+        // Add to live queue only if grid overlaps with any present stream ad
+        setSelectedStreamAds(currentStreamAds => {
+          const validStreamAds = currentStreamAds.filter(ad => (ad.plays_per_stream || 0) > 0)
+
+          const streamCells = new Set()
+          const currentBackendIds = new Set()
+          validStreamAds.forEach(ad => {
+            currentBackendIds.add(ad.backendId)
+            const adGrid = ad.gridSelection || []
+            adGrid.forEach(cell => streamCells.add(cell))
+          })
+
+          const candidates = [...newPlaylistItems, ...mappedApprovedData]
+            .filter(ad => !currentBackendIds.has(ad.backendId))
+            .filter(ad => (ad.plays_per_stream || 0) > 0)
+
+          const matchingAds = candidates.filter(ad => {
             const adGrid = ad.gridSelection || []
             if (adGrid.length === 0) return true
-            return adGrid.some(cell => currentPositions.includes(cell))
+            if (streamCells.size === 0) return true // accept if stream is empty
+            return adGrid.some(cell => streamCells.has(cell))
           })
-          if (matchingAds.length > 0) {
-            setSelectedStreamAds(p => {
-              if (p.length === 0) return p
-              const brandMaxPay = {}
-              const combined = [...p, ...matchingAds]
-              combined.forEach(ad => {
-                const pay = ad.amountPerPlay || 0
-                if (!brandMaxPay[ad.brand] || brandMaxPay[ad.brand] < pay) brandMaxPay[ad.brand] = pay
-              })
-              const sorted = combined.sort((a, b) => {
-                const bd = (brandMaxPay[b.brand] || 0) - (brandMaxPay[a.brand] || 0)
-                if (bd !== 0) return bd
-                if (a.brand !== b.brand) return a.brand.localeCompare(b.brand)
-                return (b.amountPerPlay || 0) - (a.amountPerPlay || 0)
-              })
-              setSecureItem(`streamer_stream_ads_${userId}`, sorted)
-              return sorted
+          
+          if (matchingAds.length > 0 || validStreamAds.length !== currentStreamAds.length) {
+            const brandMaxPay = {}
+            const combined = [...validStreamAds, ...matchingAds]
+            combined.forEach(ad => {
+              const pay = ad.amountPerPlay || 0
+              if (!brandMaxPay[ad.brand] || brandMaxPay[ad.brand] < pay) brandMaxPay[ad.brand] = pay
             })
+            const sorted = combined.sort((a, b) => {
+              const bd = (brandMaxPay[b.brand] || 0) - (brandMaxPay[a.brand] || 0)
+              if (bd !== 0) return bd
+              if (a.brand !== b.brand) return a.brand.localeCompare(b.brand)
+              return (b.amountPerPlay || 0) - (a.amountPerPlay || 0)
+            })
+            setSecureItem(`streamer_stream_ads_${userId}`, sorted)
+            return sorted
           }
-          return currentPositions
+          return currentStreamAds
         })
 
         // Bust the ad-requests cache so new requests reload
@@ -890,9 +958,16 @@ export default function StreamerDashboard() {
       }
     }
 
-    const interval = setInterval(checkForNewAds, 30000) // every 30 seconds
-    return () => clearInterval(interval)
-  }, [user, id])
+    checkForNewAdsRef.current = checkForNewAds
+
+    let interval = null;
+    if (!isStreaming) {
+      interval = setInterval(checkForNewAds, 30000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [user, id, isStreaming])
 
   /* ── Keep refs in sync & Cache ── */
   useEffect(() => { 
@@ -914,7 +989,8 @@ export default function StreamerDashboard() {
 
   /* ── Sync loop ── */
   useEffect(() => {
-    // When streaming, only rotate through selectedStreamAds
+    // Pass the SAME array the backend overlay uses — no filtering here.
+    // Exhausted ads are removed from selectedStreamAds automatically when plays hit 0.
     const adsToSync = isStreaming && selectedStreamAds.length > 0
       ? selectedStreamAds
       : playlist.filter(a => a.status === 'live')
@@ -934,6 +1010,49 @@ export default function StreamerDashboard() {
     }
     return () => clearInterval(timerRef.current)
   }, [isStreaming, streamStartTime])
+
+  /* ── Sync selectedStreamAds to backend + persistent storage if streaming ── */
+  useEffect(() => {
+    if (isStreaming && selectedStreamAds.length > 0) {
+      const userId = user?.id || user?.uid || id;
+      if (userId) {
+        // Save to persistent storage so page refresh doesn't lose the queue
+        setSecureItem(`streamer_stream_ads_${userId}`, selectedStreamAds)
+        // Sync to backend so the OBS overlay picks up the updated ad list
+        updateActiveStreamAds(userId, selectedStreamAds).catch(e => console.error("Failed to sync active stream ads", e));
+      }
+    }
+  }, [selectedStreamAds, isStreaming, user, id])
+
+  /* ── Initialize plays tracking for newly-added stream ads (mid-stream injection) ── */
+  useEffect(() => {
+    if (!isStreaming || selectedStreamAds.length === 0) return
+    const userId = user?.id || user?.uid || id
+
+    let changed = false
+    const updatedLive = { ...streamPlaysRef.current }
+    const updatedInitial = { ...initialPlaysRef.current }
+
+    selectedStreamAds.forEach(ad => {
+      if (updatedLive[ad.id] === undefined) {
+        // New ad added mid-stream — snapshot its current plays_per_stream
+        const plays = ad.plays_per_stream || ad.remaining_count || ad.approved_count || 24
+        updatedLive[ad.id] = plays
+        updatedInitial[ad.id] = plays
+        changed = true
+      }
+    })
+
+    if (changed) {
+      streamPlaysRef.current = updatedLive
+      initialPlaysRef.current = updatedInitial
+      setStreamPlaysMap(updatedLive)
+      if (userId) {
+        setSecureItem(`streamer_stream_plays_${userId}`, updatedLive)
+        setSecureItem(`streamer_initial_plays_${userId}`, updatedInitial)
+      }
+    }
+  }, [selectedStreamAds, isStreaming, user, id])
 
   const formatElapsed = (secs) => {
     const h = Math.floor(secs / 3600)
@@ -971,25 +1090,35 @@ export default function StreamerDashboard() {
         const t = currentT
         const activeAd = liveAds[currentIdx]
         const adId = activeAd.id
-        const instanceTimestamp = Math.floor((Date.now() / 1000) / total) * total + acc
+        
+        const currentCycle = Math.floor((Date.now() / 1000) / total)
+        if (cycleRef.current !== currentCycle && cycleRef.current !== null) {
+           cycleRef.current = currentCycle
+           if (checkForNewAdsRef.current) checkForNewAdsRef.current()
+        } else if (cycleRef.current === null) {
+           cycleRef.current = currentCycle
+        }
 
-        if (!window.lastCountedInstances) window.lastCountedInstances = {}
-
-        if (t < activeAd.duration + 1) {
-          if (window.lastCountedInstances[adId] !== instanceTimestamp) {
-            window.lastCountedInstances[adId] = instanceTimestamp
+        // ── During the ad display window (not the gap) ──
+        if (t < activeAd.duration) {
+          // If this is a DIFFERENT ad than the last one we counted, it's a new play
+          if (prevActiveAdRef.current !== adId) {
+            prevActiveAdRef.current = adId
             setAdsAiredCount(c => c + 1)
 
             // ── Decrement plays_per_stream for the ad that just STARTED ──
             const currentPlays = streamPlaysRef.current[adId]
-            if (currentPlays !== undefined) {
+            if (currentPlays !== undefined && currentPlays > 0) {
               const newPlays = Math.max(0, currentPlays - 1)
               streamPlaysRef.current = { ...streamPlaysRef.current, [adId]: newPlays }
               setStreamPlaysMap(prev => ({ ...prev, [adId]: newPlays }))
 
-              // ── Sync to playlist and selectedStreamAds for UI everywhere ──
+              // Persist live plays to cache for page refresh recovery
+              const userIdCache = user?.id || user?.uid || id
+              if (userIdCache) setSecureItem(`streamer_stream_plays_${userIdCache}`, streamPlaysRef.current)
+
+              // ── Sync to playlist for UI ──
               setPlaylist(prev => prev.map(a => a.id === adId ? { ...a, plays_per_stream: newPlays } : a))
-              setSelectedStreamAds(prev => prev.map(a => a.id === adId ? { ...a, plays_per_stream: newPlays } : a))
 
               // ── Save to DB immediately ──
               if (activeAd.backendId) {
@@ -1001,23 +1130,32 @@ export default function StreamerDashboard() {
               }
 
               if (newPlays === 0) {
-                // Alert the streamer that this ad's stream quota is exhausted
+                // Remove exhausted ad from the live rotation queue and mark as ended in playlist
+                const removeUserId = user?.id || user?.uid || id
                 setTimeout(() => {
-                  alert(`⚠️ Ad quota reached!\n\n"${activeAd.name}" has used all its allowed plays for this stream.`)
+                  setSelectedStreamAds(prev => {
+                    const filtered = prev.filter(a => a.id !== adId)
+                    if (removeUserId) setSecureItem(`streamer_stream_ads_${removeUserId}`, filtered)
+                    return filtered
+                  })
+                  setPlaylist(prev => prev.map(a => a.id === adId ? { ...a, status: 'ended', plays_per_stream: 0 } : a))
                 }, 100)
               }
             }
           }
-          prevIndex = currentIdx
-          setActiveIndex(currentIdx)
-          setProgressMap(p => ({ ...p, [currentIdx]: Math.min(100, (t / activeAd.duration) * 100) }))
+          setActiveIndex(adId)
+          setProgressMap(p => ({ ...p, [adId]: Math.min(100, (t / activeAd.duration) * 100) }))
+        } else {
+          // We're in the gap period — clear prevActiveAdRef so the SAME ad can be counted again next cycle
+          prevActiveAdRef.current = null
         }
 
-        // Compute countdown for every ad
+        // Compute countdown for every ad — keyed by ad ID
         const countdowns = {}
         for (let i = 0; i < liveAds.length; i++) {
+          const cId = liveAds[i].id
           if (i === currentIdx) {
-            countdowns[i] = 0 // currently playing
+            countdowns[cId] = 0 // currently playing
           } else {
             // Time until this ad starts playing
             let startOfAd = 0
@@ -1026,7 +1164,7 @@ export default function StreamerDashboard() {
             }
             let timeUntil = startOfAd - rel
             if (timeUntil < 0) timeUntil += total // wrap around
-            countdowns[i] = Math.ceil(timeUntil)
+            countdowns[cId] = Math.ceil(timeUntil)
           }
         }
         setCountdownMap(countdowns)
@@ -1084,9 +1222,7 @@ export default function StreamerDashboard() {
             continue
         }
 
-        // Add to playlist immediately
-        setPlaylist(p => {
-          const next = [...p, {
+        const newApprovedAd = {
             id: `approved_${backendAd.id}`,
             backendId: backendAd.id,
             name: adName,
@@ -1107,10 +1243,47 @@ export default function StreamerDashboard() {
               : [],
             ads: req.ads,
             plays_per_stream: req.playsPerStream || 24
-          }].sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
+        }
+
+        // Add to playlist immediately
+        setPlaylist(p => {
+          const next = [...p, newApprovedAd].sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
           
           setSecureItem(`streamer_playlist_${userId}`, next)
           return next
+        })
+
+        // Also add to live queue if grid matches
+        setSelectedPositions(currentPositions => {
+          const matchingAds = [newApprovedAd].filter(ad => {
+            if (!currentPositions || currentPositions.length === 0) return true
+            const adGrid = ad.gridSelection || []
+            if (adGrid.length === 0) return true
+            return adGrid.some(cell => currentPositions.includes(cell))
+          })
+          if (matchingAds.length > 0) {
+            setSelectedStreamAds(p => {
+              if (p.length === 0) {
+                setSecureItem(`streamer_stream_ads_${userId}`, matchingAds)
+                return matchingAds
+              }
+              const brandMaxPay = {}
+              const combined = [...p, ...matchingAds]
+              combined.forEach(ad => {
+                const pay = ad.amountPerPlay || 0
+                if (!brandMaxPay[ad.brand] || brandMaxPay[ad.brand] < pay) brandMaxPay[ad.brand] = pay
+              })
+              const sorted = combined.sort((a, b) => {
+                const bd = (brandMaxPay[b.brand] || 0) - (brandMaxPay[a.brand] || 0)
+                if (bd !== 0) return bd
+                if (a.brand !== b.brand) return a.brand.localeCompare(b.brand)
+                return (b.amountPerPlay || 0) - (a.amountPerPlay || 0)
+              })
+              setSecureItem(`streamer_stream_ads_${userId}`, sorted)
+              return sorted
+            })
+          }
+          return currentPositions
         })
     }
 
@@ -1163,8 +1336,7 @@ export default function StreamerDashboard() {
     }).then(res => {
       const newAd = res?.ad || res
       if (newAd) {
-        setPlaylist(p => {
-          const mapped = {
+        const mapped = {
             id: `approved_${newAd.id}`,
             backendId: newAd.id,
             name: newAd.ad_name,
@@ -1177,9 +1349,46 @@ export default function StreamerDashboard() {
             remaining_count: newAd.remaining_count,
             approved_count: newAd.approved_count,
             used_count: newAd.used_count || 0,
+            gridSelection: newAd.grid_selection ? (Array.isArray(newAd.grid_selection) ? newAd.grid_selection : newAd.grid_selection.split(',').map(Number)) : [],
             ads: []
+        }
+        setPlaylist(p => {
+          const next = [...p, mapped].sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
+          setSecureItem(`streamer_playlist_${userId}`, next)
+          return next
+        })
+
+        // Also add to live queue if grid matches
+        setSelectedPositions(currentPositions => {
+          const matchingAds = [mapped].filter(ad => {
+            if (!currentPositions || currentPositions.length === 0) return true
+            const adGrid = ad.gridSelection || []
+            if (adGrid.length === 0) return true
+            return adGrid.some(cell => currentPositions.includes(cell))
+          })
+          if (matchingAds.length > 0) {
+            setSelectedStreamAds(p => {
+              if (p.length === 0) {
+                setSecureItem(`streamer_stream_ads_${userId}`, matchingAds)
+                return matchingAds
+              }
+              const brandMaxPay = {}
+              const combined = [...p, ...matchingAds]
+              combined.forEach(ad => {
+                const pay = ad.amountPerPlay || 0
+                if (!brandMaxPay[ad.brand] || brandMaxPay[ad.brand] < pay) brandMaxPay[ad.brand] = pay
+              })
+              const sorted = combined.sort((a, b) => {
+                const bd = (brandMaxPay[b.brand] || 0) - (brandMaxPay[a.brand] || 0)
+                if (bd !== 0) return bd
+                if (a.brand !== b.brand) return a.brand.localeCompare(b.brand)
+                return (b.amountPerPlay || 0) - (a.amountPerPlay || 0)
+              })
+              setSecureItem(`streamer_stream_ads_${userId}`, sorted)
+              return sorted
+            })
           }
-          return [...p, mapped]
+          return currentPositions
         })
         setRejectedAds(p => p.filter(r => r.id !== ad.id))
       }
@@ -1302,9 +1511,12 @@ export default function StreamerDashboard() {
       const activeAdData = playlist.find(p => p.id === ad.id) || ad
       initialPlaysMap[ad.id] = activeAdData.plays_per_stream || ad.plays_per_stream || ad.remaining_count || ad.approved_count || 24
     })
-    streamPlaysRef.current = initialPlaysMap
+    streamPlaysRef.current = { ...initialPlaysMap }
+    initialPlaysRef.current = { ...initialPlaysMap }
+    prevActiveAdRef.current = null
     setStreamPlaysMap(initialPlaysMap)
     setSecureItem(`streamer_stream_plays_${userId}`, initialPlaysMap)
+    setSecureItem(`streamer_initial_plays_${userId}`, initialPlaysMap)
 
     const sessionPayload = {
       streamer_id: userId,
@@ -1372,7 +1584,9 @@ export default function StreamerDashboard() {
     const userId = user?.id || user?.uid || id
 
     const finalPlays = streamPlaysRef.current
-    const initialPlays = getSecureItem(`streamer_stream_plays_${userId}`) || {}
+    const initialPlays = initialPlaysRef.current && Object.keys(initialPlaysRef.current).length > 0
+      ? initialPlaysRef.current
+      : getSecureItem(`streamer_initial_plays_${userId}`) || {}
 
     // ── Update plays count for EVERY ad — one pair of calls each ──
     const allAdsWithBackendId = selectedStreamAds.filter(ad => ad.backendId && ad.campaignId)
@@ -1449,8 +1663,11 @@ export default function StreamerDashboard() {
 
     // ── Reset local state ──
     removeSecureItem(`streamer_stream_plays_${userId}`)
+    removeSecureItem(`streamer_initial_plays_${userId}`)
     removeSecureItem(`streamer_last_fetch_${userId}`)
     streamPlaysRef.current = {}
+    initialPlaysRef.current = {}
+    prevActiveAdRef.current = null
     setStreamPlaysMap({})
     setOverlayLink('') // clear the OBS link — a new one is generated on next stream start
     setIsStreaming(false)
@@ -1724,7 +1941,7 @@ export default function StreamerDashboard() {
                   : (
                     <div className="sd-live-list">
                       {liveAds.map((ad, i) => {
-                        const isPlaying = i === activeIndex
+                        const isPlaying = ad.id === activeIndex
                         const thumbUrl = ad.media_url || ad.ads?.[0]?.media_url
                         return (
                           <div key={ad.id} className={`sd-live-row ${isPlaying ? 'now-playing' : ''}`}>
@@ -2075,7 +2292,7 @@ export default function StreamerDashboard() {
                       <div className="sd-stat-sub">Live ads playing now</div>
                     </div>
                     <div className="sd-stat-card">
-                      <div className="sd-stat-value">{selectedStreamAds.filter((_, i) => i > activeIndex).length}</div>
+                      <div className="sd-stat-value">{(() => { const ai = selectedStreamAds.findIndex(a => a.id === activeIndex); return ai === -1 ? selectedStreamAds.length : selectedStreamAds.filter((_, i) => i > ai).length; })()}</div>
                       <div className="sd-stat-label">Upcoming in stream</div>
                       <div className="sd-stat-sub">Queued and ready</div>
                     </div>
@@ -2096,8 +2313,8 @@ export default function StreamerDashboard() {
                         : (
                           <div className="sd-live-list">
                             {selectedStreamAds.map((ad, i) => {
-                              const isPlaying = i === activeIndex
-                              const prog = progressMap[i] || 0
+                              const isPlaying = ad.id === activeIndex
+                              const prog = progressMap[ad.id] || 0
                               const playsLeft = streamPlaysMap[ad.id]
                               const exhausted = playsLeft !== undefined && playsLeft === 0
                               const thumbUrl = ad.ads?.[0]?.media_url || ad.media_url || (ad.layout_json?.image_url)
@@ -2131,9 +2348,14 @@ export default function StreamerDashboard() {
                                   )}
                                   {isPlaying
                                     ? <span className="sd-now-badge">NOW</span>
-                                    : <span className="sd-days-badge" style={{ background: i < activeIndex ? '#ECFDF5' : '#EEF2FF', color: i < activeIndex ? '#059669' : '#3B5BFF', fontSize: '0.7rem' }}>
-                                        {i < activeIndex ? 'Played' : `Queued #${i - activeIndex}`}
-                                      </span>
+                                    : (() => {
+                                        const ai = selectedStreamAds.findIndex(a => a.id === activeIndex)
+                                        const isPast = ai !== -1 && i < ai
+                                        const queueNum = ai !== -1 ? i - ai : i + 1
+                                        return <span className="sd-days-badge" style={{ background: isPast ? '#ECFDF5' : '#EEF2FF', color: isPast ? '#059669' : '#3B5BFF', fontSize: '0.7rem' }}>
+                                          {isPast ? 'Played' : `Queued #${queueNum}`}
+                                        </span>
+                                      })()
                                   }
                                 </div>
                               )
@@ -2150,10 +2372,11 @@ export default function StreamerDashboard() {
                           <div className="sd-eyebrow">Queued</div>
                           <h2 className="sd-card-title">Upcoming <em>ads</em></h2>
                         </div>
-                        <span className="sd-days-badge blue" style={{ alignSelf:'center' }}>{selectedStreamAds.filter((_, i) => i > activeIndex).length} queued</span>
+                        <span className="sd-days-badge blue" style={{ alignSelf:'center' }}>{(() => { const ai = selectedStreamAds.findIndex(a => a.id === activeIndex); return ai === -1 ? selectedStreamAds.length : selectedStreamAds.filter((_, i) => i > ai).length; })()} queued</span>
                       </div>
                       {(() => {
-                        const queuedAds = selectedStreamAds.filter((_, i) => i > activeIndex)
+                        const activeIdx = selectedStreamAds.findIndex(a => a.id === activeIndex)
+                        const queuedAds = activeIdx === -1 ? selectedStreamAds : selectedStreamAds.filter((_, i) => i > activeIdx)
                         if (queuedAds.length === 0) {
                           return <p className="sd-empty">No upcoming ads queued.</p>
                         }
@@ -2161,7 +2384,7 @@ export default function StreamerDashboard() {
                           <div className="sd-live-list">
                             {queuedAds.map((ad, qi) => {
                               const realIndex = selectedStreamAds.findIndex(s => s.id === ad.id)
-                              const countdown = countdownMap[realIndex]
+                              const countdown = countdownMap[ad.id]
                               return (
                                 <div key={ad.id} className="sd-live-row" style={{ alignItems: 'center' }}>
                                   <div className="sd-live-indicator-dot" style={{ background: '#C7D2FE' }}/>
@@ -2184,10 +2407,10 @@ export default function StreamerDashboard() {
                                   <div style={{ display: 'flex', gap: '0.25rem', marginLeft: 'auto' }}>
                                     <button
                                       className="sd-btn-ghost sd-btn-xs"
-                                      disabled={realIndex <= activeIndex + 1}
+                                      disabled={realIndex <= activeIdx + 1}
                                       onClick={() => moveStreamAd(realIndex, -1)}
                                       title="Move up"
-                                      style={{ padding: '0.25rem 0.45rem', fontSize: '0.75rem', opacity: realIndex <= activeIndex + 1 ? 0.3 : 1 }}
+                                      style={{ padding: '0.25rem 0.45rem', fontSize: '0.75rem', opacity: realIndex <= activeIdx + 1 ? 0.3 : 1 }}
                                     >▲</button>
                                     <button
                                       className="sd-btn-ghost sd-btn-xs"
@@ -3359,9 +3582,14 @@ export default function StreamerDashboard() {
                                  borderRadius: '8px',
                                  border: isSelected ? '1px solid #3B5BFF' : '1px solid #e2e8f0',
                                  background: isSelected ? '#EEF2FF' : 'white',
-                                 cursor: 'pointer',
+                                 cursor: (ad.plays_per_stream || 0) <= 0 ? 'not-allowed' : 'pointer',
+                                 opacity: (ad.plays_per_stream || 0) <= 0 ? 0.5 : 1,
                                  transition: 'all 0.15s'
                                }} onClick={() => {
+                                 if ((ad.plays_per_stream || 0) <= 0 && !isSelected) {
+                                   alert('This ad has used all its plays for this stream and cannot be added.')
+                                   return
+                                 }
                                  setSelectedStreamAds(prev => {
                                    if (isSelected) return prev.filter(s => s.id !== ad.id)
                                    return [...prev, ad]
