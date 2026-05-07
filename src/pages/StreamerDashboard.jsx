@@ -218,6 +218,12 @@ export default function StreamerDashboard() {
   // Misc
   const [previewOpen,        setPreviewOpen]         = useState(false)
   const [previewAd,          setPreviewAd]           = useState(null)
+  const [expandedBrandRequests, setExpandedBrandRequests] = useState({})
+  const [expandedPlaylistBrands, setExpandedPlaylistBrands] = useState({})
+  const [expandedPickerBrands,  setExpandedPickerBrands]  = useState({})
+  const [selectedBrandAdsModal, setSelectedBrandAdsModal] = useState(null)
+  const [selectedBrandModal,    setSelectedBrandModal]    = useState(null)
+  const [selectedBrandRequestModal, setSelectedBrandRequestModal] = useState(null)
   const [walletInfo,         setWalletInfo]          = useState({ account_number: '', ifsc_code: '', account_holder_name: '', upi_id: '' })
   const [completedStreams,   setCompletedStreams]    = useState([])
   const [expandedStreamId,   setExpandedStreamId]    = useState(null)
@@ -300,7 +306,7 @@ export default function StreamerDashboard() {
 
     // 3. Process Ad Requests (Potential brands)
     adRequests.forEach(req => {
-      const name = req.brand
+      const name = req.brandName || req.brand || 'Potential Partner'
       if (!brandsMap[name]) {
         brandsMap[name] = {
           id: name.toLowerCase().replace(/\s+/g, '-'),
@@ -450,6 +456,23 @@ export default function StreamerDashboard() {
       setStreamPlaysMap(cachedStreamPlays)
     }
 
+    // ── Restore active stream session on page refresh ──
+    const savedSession = sessionStorage.getItem(`stream_session_${userId}`)
+    if (savedSession) {
+      try {
+        const sess = JSON.parse(savedSession)
+        if (sess.isStreaming) {
+          setIsStreaming(true)
+          setStreamTitle(sess.streamTitle || '')
+          setStreamLink(sess.streamLink || '')
+          setStreamContent(sess.streamContent || '')
+          setStreamStartTime(sess.streamStartTime || Date.now())
+          setAdsAiredCount(sess.adsAiredCount || 0)
+          if (sess.selectedStreamAds) setSelectedStreamAds(sess.selectedStreamAds)
+        }
+      } catch (e) { console.error('Error restoring stream session', e) }
+    }
+
     // Check if we already have the API data cached within the last 5 minutes
     const lastFetchTime = getSecureItem(`streamer_last_fetch_${userId}`)
     const cachedAdRequests = getSecureItem(`streamer_ad_requests_${userId}`)
@@ -468,65 +491,95 @@ export default function StreamerDashboard() {
       // Mark as fetched
       setSecureItem(`streamer_last_fetch_${userId}`, now)
       if (brandData && brandData.items) {
-        let mapped = brandData.items.flatMap(brand => 
-          (brand.campaigns || []).map(camp => {
-            const budget = camp.estimated_cost_rupees || 0
-            const playCount = camp.play_count || 1
-            const amountPerPlay = budget / playCount
-            return {
-              id: `req_${camp.id || camp.campaign_id}`,
-              campaignId: camp.campaign_id || camp.id,
-              campaignName: camp.campaign_name || 'Unnamed Campaign',
-              brand: brand.brand_name,
-              brandCategory: brand.brand_category,
-              displayName: `${brand.brand_name} — ${camp.campaign_name || 'Unnamed Campaign'}`,
-              tier: camp.tier || tier,
-              budgetRange: `₹${budget}`,
-              amountPerPlay: amountPerPlay,
-              daysLive: camp.campaign_duration_days || 7,
-              type: camp.ads && camp.ads.length > 0 ? camp.ads[0].ad_type : 'unknown',
-              approvedCount: camp.play_count || 10,
-              playsPerStream: camp.ads?.[0]?.plays_per_stream || 24,
-              ads: camp.ads || []
-            }
-          })
-        ).sort((a, b) => b.amountPerPlay - a.amountPerPlay)
-
         const approvedSet = new Set((approvedData || []).map(a => a.ad_name))
         const rejectedSet = new Set((rejectedData || []).map(r => r.ad_name))
         const approvedCampaignSet = new Set((approvedData || []).map(a => a.campaign_id).filter(Boolean))
         const rejectedCampaignSet = new Set((rejectedData || []).map(r => r.campaign_id).filter(Boolean))
-        
+        const approvedBrandsSet = new Set((approvedData || []).map(a => a.brand_name).filter(Boolean))
         const seenCampaignIds = new Set()
         const seenDisplayNames = new Set()
+        const adsToAutoApprove = []
 
-        mapped = mapped.filter(m => {
-          const adName = m.ads?.[0]?.ad_name || m.campaignName || m.displayName.split(' — ')[1] || m.displayName
-          if (approvedSet.has(adName) || rejectedSet.has(adName)) return false
-          if (m.campaignId && (approvedCampaignSet.has(m.campaignId) || rejectedCampaignSet.has(String(m.campaignId)))) return false
+        let mapped = brandData.items.map(brand => {
+          const validAdsForBrand = []
+          let totalBrandPay = 0
+          
+          ;(brand.campaigns || []).forEach(camp => {
+             const budget = camp.estimated_cost_rupees || 0
+             const playCount = camp.play_count || 1
+             const amountPerPlay = budget / playCount
+             const displayName = `${brand.brand_name} — ${camp.campaign_name || 'Unnamed Campaign'}`
+             const campaignId = camp.campaign_id || camp.id
 
-          if (m.campaignId && seenCampaignIds.has(m.campaignId)) return false
-          if (m.displayName && seenDisplayNames.has(m.displayName)) return false
+             if (campaignId && (approvedCampaignSet.has(campaignId) || rejectedCampaignSet.has(String(campaignId)))) return
+             if (campaignId && seenCampaignIds.has(campaignId)) return
+             if (displayName && seenDisplayNames.has(displayName)) return
+             
+             if (campaignId) seenCampaignIds.add(campaignId)
+             if (displayName) seenDisplayNames.add(displayName)
 
-          if (m.campaignId) seenCampaignIds.add(m.campaignId)
-          if (m.displayName) seenDisplayNames.add(m.displayName)
+             const campAds = camp.ads || []
+             campAds.forEach(ad => {
+                const adName = ad.ad_name || camp.campaign_name || displayName
+                if (approvedSet.has(adName) || rejectedSet.has(adName)) return
+                
+                const adReqObj = {
+                   id: `req_${campaignId}_${ad.id || Math.random()}`,
+                   campaignId: campaignId,
+                   campaignName: camp.campaign_name || 'Unnamed Campaign',
+                   brand: brand.brand_name,
+                   brandCategory: brand.brand_category,
+                   displayName: displayName,
+                   tier: camp.tier || tier,
+                   amountPerPlay: amountPerPlay,
+                   daysLive: camp.campaign_duration_days || 7,
+                   type: ad.ad_type || 'unknown',
+                   approvedCount: camp.play_count || 10,
+                   playsPerStream: ad.plays_per_stream || 24,
+                   ads: [ad],
+                   layout_json: ad
+                }
+                
+                if (approvedBrandsSet.has(brand.brand_name)) {
+                   adsToAutoApprove.push({ brand, adReq: adReqObj })
+                   return; // Don't add to validAdsForBrand
+                }
 
-          return true
-        })
+                validAdsForBrand.push(adReqObj)
+                totalBrandPay += amountPerPlay
+             })
+          })
+
+          return {
+             id: `brand_${brand.brand_id || brand.brand_name}`,
+             brandName: brand.brand_name,
+             brandCategory: brand.brand_category || 'Partner',
+             totalPlayCount: brand.total_play_count,
+             totalBrandPay: totalBrandPay,
+             ads: validAdsForBrand
+          }
+        }).filter(b => b.ads.length > 0).sort((a, b) => b.totalBrandPay - a.totalBrandPay)
         
         setAdRequests(mapped)
         setSecureItem(`streamer_ad_requests_${userId}`, mapped)
 
         // Extract real plays_per_stream from the brandData items for lookup
         const realPlaysMap = {}
+        const realPaysMap = {}
         if (brandData && brandData.items) {
           brandData.items.forEach(b => {
             (b.campaigns || []).forEach(c => {
-              (c.ads || []).forEach(a => {
+              const budget = c.estimated_cost_rupees || 0
+              const playCount = c.play_count || 1
+              const amountPerPlay = budget / playCount
+              
+              ;(c.ads || []).forEach(a => {
                 if (a.plays_per_stream != null) {
                   if (c.campaign_id) realPlaysMap[`${c.campaign_id}_${a.ad_name}`] = a.plays_per_stream
                   if (c.id) realPlaysMap[`${c.id}_${a.ad_name}`] = a.plays_per_stream
                 }
+                if (c.campaign_id) realPaysMap[`${c.campaign_id}_${a.ad_name}`] = amountPerPlay
+                if (c.id) realPaysMap[`${c.id}_${a.ad_name}`] = amountPerPlay
               })
             })
           })
@@ -567,7 +620,7 @@ export default function StreamerDashboard() {
               status: (ad.status === 'approved' || ad.status === 'partially_used') ? 'live' : ad.status,
               daysLeft: 0,
               earnings: '—',
-              amountPerPlay: ad.amount_per_play || 0,
+              amountPerPlay: ad.amount_per_play || realPaysMap[`${ad.campaign_id}_${ad.ad_name}`] || realPaysMap[`${ad.campaign_db_id}_${ad.ad_name}`] || 0,
               type: ad.ad_media_type || 'text',
               media_url: adThumb,
               remaining_count: ad.remaining_count,
@@ -597,6 +650,101 @@ export default function StreamerDashboard() {
           })).then(finalPlaylist => {
             setPlaylist(finalPlaylist)
           })
+
+          if (adsToAutoApprove.length > 0) {
+            const autoApproveProcess = async () => {
+                const newPlaylistItems = []
+                for (const item of adsToAutoApprove) {
+                    const { brand, adReq } = item;
+                    const adToApprove = adReq.ads[0]
+                    const adName = adToApprove?.ad_name || adReq.campaignName || adReq.displayName
+                    
+                    const backendAd = await postApprovedAd(userId, {
+                        brand_name: brand.brand_name,
+                        ad_name: adName,
+                        campaign_id: adReq.campaignId,
+                        approved_count: adReq.approvedCount,
+                        remaining_count: adReq.approvedCount,
+                        plays_per_stream: adReq.playsPerStream,
+                        amount_per_play: adReq.amountPerPlay,
+                        ad_media_url: adToApprove.image_url || adToApprove.media_url,
+                        ad_media_type: adToApprove.ad_type,
+                        grid_selection: adToApprove.grid_cell_placement
+                          ? adToApprove.grid_cell_placement.split(',').map(Number)
+                          : [],
+                        show_duration: adToApprove.duration_seconds || 15,
+                        layout_json: adToApprove
+                    })
+
+                    if (backendAd) {
+                        newPlaylistItems.push({
+                            id: `approved_${backendAd.id}`,
+                            backendId: backendAd.id,
+                            name: adName,
+                            brand: brand.brand_name,
+                            campaignId: adReq.campaignId,
+                            duration: adToApprove?.duration_seconds || 15, 
+                            status: 'live', 
+                            daysLeft: adReq.daysLive, 
+                            earnings: '—', 
+                            amountPerPlay: adReq.amountPerPlay,
+                            type: adReq.type,
+                            remaining_count: adReq.approvedCount,
+                            approved_count: adReq.approvedCount,
+                            used_count: 0,
+                            media_url: adToApprove?.image_url || adToApprove?.media_url,
+                            gridSelection: adToApprove?.grid_cell_placement
+                              ? adToApprove.grid_cell_placement.split(',').map(Number)
+                              : [],
+                            ads: adReq.ads,
+                            plays_per_stream: adReq.playsPerStream || 24
+                        })
+                    }
+                }
+                
+                if (newPlaylistItems.length > 0) {
+                    setPlaylist(p => {
+                       const next = [...p, ...newPlaylistItems].sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
+                       setSecureItem(`streamer_playlist_${userId}`, next)
+                       return next
+                    })
+
+                    // ── Auto-add to live queue only if ad grid overlaps streamer's selected positions ──
+                    setSelectedPositions(currentPositions => {
+                      const matchingNewAds = newPlaylistItems.filter(ad => {
+                        if (!currentPositions || currentPositions.length === 0) return true // no filter = accept all
+                        const adGrid = ad.gridSelection || []
+                        if (adGrid.length === 0) return true // ad has no restriction = accept
+                        return adGrid.some(cell => currentPositions.includes(cell))
+                      })
+
+                      if (matchingNewAds.length > 0) {
+                        setSelectedStreamAds(p => {
+                           if (p.length === 0) return p;
+                           const brandMaxPay = {};
+                           const combined = [...p, ...matchingNewAds];
+                           combined.forEach(ad => {
+                             const pay = ad.amountPerPlay || 0;
+                             if (!brandMaxPay[ad.brand] || brandMaxPay[ad.brand] < pay) {
+                               brandMaxPay[ad.brand] = pay;
+                             }
+                           });
+                           const sortedAds = combined.sort((a, b) => {
+                             const brandDiff = (brandMaxPay[b.brand] || 0) - (brandMaxPay[a.brand] || 0);
+                             if (brandDiff !== 0) return brandDiff;
+                             if (a.brand !== b.brand) return a.brand.localeCompare(b.brand);
+                             return (b.amountPerPlay || 0) - (a.amountPerPlay || 0);
+                           });
+                           setSecureItem(`streamer_stream_ads_${userId}`, sortedAds)
+                           return sortedAds
+                        })
+                      }
+                      return currentPositions // don't change positions
+                    })
+                }
+            }
+            autoApproveProcess()
+          }
         }
 
         if (rejectedData) {
@@ -610,6 +758,140 @@ export default function StreamerDashboard() {
         }
       }
     }).catch(err => console.error("Failed to fetch brands or status", err))
+  }, [user, id])
+
+  /* ── Poll every 30s for new ads from already-approved brands ── */
+  useEffect(() => {
+    if (!user || DEV_MODE) return
+    const userId = user?.id || user?.uid || id
+    if (!userId) return
+    const tier = user?.tier || 'Tier 5'
+
+    const checkForNewAds = async () => {
+      try {
+        const [brandData, approvedData] = await Promise.all([
+          fetchTierBrands(tier),
+          fetchApprovedAds(userId)
+        ])
+        if (!brandData?.items || !approvedData) return
+
+        const approvedCampaignSet = new Set(approvedData.map(a => a.campaign_id).filter(Boolean))
+        const approvedBrandsSet   = new Set(approvedData.map(a => a.brand_name).filter(Boolean))
+        const existingAdNames     = new Set(approvedData.map(a => a.ad_name).filter(Boolean))
+
+        const freshItems = []
+        brandData.items.forEach(brand => {
+          if (!approvedBrandsSet.has(brand.brand_name)) return // only already-approved brands
+          ;(brand.campaigns || []).forEach(camp => {
+            const campaignId = camp.campaign_id || camp.id
+            if (approvedCampaignSet.has(campaignId)) return // campaign already in playlist
+            const budget = camp.estimated_cost_rupees || 0
+            const playCount = camp.play_count || 1
+            const amountPerPlay = budget / playCount
+            ;(camp.ads || []).forEach(ad => {
+              const adName = ad.ad_name || camp.campaign_name
+              if (existingAdNames.has(adName)) return // already approved
+              freshItems.push({ brand, camp, ad, campaignId, amountPerPlay })
+            })
+          })
+        })
+
+        if (freshItems.length === 0) return
+
+        // Auto-approve each new ad
+        const newPlaylistItems = []
+        for (const { brand, camp, ad, campaignId, amountPerPlay } of freshItems) {
+          const adName = ad.ad_name || camp.campaign_name
+          const backendAd = await postApprovedAd(userId, {
+            brand_name: brand.brand_name,
+            ad_name: adName,
+            campaign_id: campaignId,
+            approved_count: camp.play_count || 10,
+            remaining_count: camp.play_count || 10,
+            plays_per_stream: ad.plays_per_stream || 24,
+            amount_per_play: amountPerPlay,
+            ad_media_url: ad.image_url || ad.media_url,
+            ad_media_type: ad.ad_type,
+            grid_selection: ad.grid_cell_placement
+              ? ad.grid_cell_placement.split(',').map(Number)
+              : [],
+            show_duration: ad.duration_seconds || 15,
+            layout_json: ad
+          })
+          if (backendAd) {
+            newPlaylistItems.push({
+              id: `approved_${backendAd.id}`,
+              backendId: backendAd.id,
+              name: adName,
+              brand: brand.brand_name,
+              campaignId,
+              duration: ad.duration_seconds || 15,
+              status: 'live',
+              daysLeft: camp.campaign_duration_days || 7,
+              earnings: '—',
+              amountPerPlay,
+              type: ad.ad_type || 'text',
+              remaining_count: camp.play_count || 10,
+              approved_count: camp.play_count || 10,
+              used_count: 0,
+              media_url: ad.image_url || ad.media_url,
+              gridSelection: ad.grid_cell_placement
+                ? ad.grid_cell_placement.split(',').map(Number)
+                : [],
+              ads: [ad],
+              plays_per_stream: ad.plays_per_stream || 24
+            })
+          }
+        }
+
+        if (newPlaylistItems.length === 0) return
+
+        // Add to playlist
+        setPlaylist(p => {
+          const next = [...p, ...newPlaylistItems].sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
+          setSecureItem(`streamer_playlist_${userId}`, next)
+          return next
+        })
+
+        // Add to live queue only if grid preference matches
+        setSelectedPositions(currentPositions => {
+          const matchingAds = newPlaylistItems.filter(ad => {
+            if (!currentPositions || currentPositions.length === 0) return true
+            const adGrid = ad.gridSelection || []
+            if (adGrid.length === 0) return true
+            return adGrid.some(cell => currentPositions.includes(cell))
+          })
+          if (matchingAds.length > 0) {
+            setSelectedStreamAds(p => {
+              if (p.length === 0) return p
+              const brandMaxPay = {}
+              const combined = [...p, ...matchingAds]
+              combined.forEach(ad => {
+                const pay = ad.amountPerPlay || 0
+                if (!brandMaxPay[ad.brand] || brandMaxPay[ad.brand] < pay) brandMaxPay[ad.brand] = pay
+              })
+              const sorted = combined.sort((a, b) => {
+                const bd = (brandMaxPay[b.brand] || 0) - (brandMaxPay[a.brand] || 0)
+                if (bd !== 0) return bd
+                if (a.brand !== b.brand) return a.brand.localeCompare(b.brand)
+                return (b.amountPerPlay || 0) - (a.amountPerPlay || 0)
+              })
+              setSecureItem(`streamer_stream_ads_${userId}`, sorted)
+              return sorted
+            })
+          }
+          return currentPositions
+        })
+
+        // Bust the ad-requests cache so new requests reload
+        setSecureItem(`streamer_last_fetch_${userId}`, 0)
+      } catch (e) {
+        console.warn('Ad poll error:', e)
+      }
+    }
+
+    const interval = setInterval(checkForNewAds, 30000) // every 30 seconds
+    return () => clearInterval(interval)
   }, [user, id])
 
   /* ── Keep refs in sync & Cache ── */
@@ -756,124 +1038,118 @@ export default function StreamerDashboard() {
   const stopSync = () => clearInterval(syncRef.current)
 
   /* ── Actions ── */
-  const approveRequest = async (reqId, campaignId) => {
-    if (!window.confirm('Approve this ad request?')) return
-    const req = adRequests.find(r => r.id === reqId)
-    if (!req) return
+  const toggleBrandRequest = (brandId) => {
+    setExpandedBrandRequests(p => ({ ...p, [brandId]: !p[brandId] }))
+  }
+
+  const togglePlaylistBrand = (brandId) => {
+    setExpandedPlaylistBrands(p => ({ ...p, [brandId]: !p[brandId] }))
+  }
+
+  const togglePickerBrand = (brandName) => {
+    setExpandedPickerBrands(p => ({ ...p, [brandName]: !p[brandName] }))
+  }
+
+  const approveBrand = async (brandId) => {
+    if (!window.confirm('Approve this brand? All its ads will be added to your playlist.')) return
+    const brand = adRequests.find(b => b.id === brandId)
+    if (!brand) return
 
     const userId = user.id || user.uid || id
     
-    // Check for duplicates in playlist
-    const adToApprove = req.ads?.[0]
-    const adName = adToApprove?.ad_name || req.campaignName || req.displayName.split(' — ')[1] || req.displayName
-    const isDuplicate = playlist.some(p => 
-      p.backendId === req.campaignId || 
-      p.name === adName ||
-      p.campaignId === req.campaignId
-    )
-    
-    if (isDuplicate) {
-      alert('This ad is already in your playlist!')
-      setAdRequests(p => p.filter(r => r.id !== reqId))
-      return
+    // Process all ads sequentially to ensure DB writes
+    for (const req of brand.ads) {
+        const adToApprove = req.ads[0]
+        const adName = adToApprove?.ad_name || req.campaignName || req.displayName
+        
+        const backendAd = await postApprovedAd(userId, {
+            brand_name: brand.brandName,
+            ad_name: adName,
+            campaign_id: req.campaignId,
+            approved_count: req.approvedCount,
+            remaining_count: req.approvedCount,
+            plays_per_stream: req.playsPerStream,
+            amount_per_play: req.amountPerPlay,
+            ad_media_url: adToApprove.image_url || adToApprove.media_url,
+            ad_media_type: adToApprove.ad_type,
+            grid_selection: adToApprove.grid_cell_placement
+              ? adToApprove.grid_cell_placement.split(',').map(Number)
+              : [],
+            show_duration: adToApprove.duration_seconds || 15,
+            layout_json: adToApprove
+        })
+
+        if (!backendAd) {
+            console.error('Failed to save ad to DB:', req.displayName)
+            continue
+        }
+
+        // Add to playlist immediately
+        setPlaylist(p => {
+          const next = [...p, {
+            id: `approved_${backendAd.id}`,
+            backendId: backendAd.id,
+            name: adName,
+            brand: brand.brandName,
+            campaignId: req.campaignId,
+            duration: adToApprove?.duration_seconds || 15, 
+            status: 'live', 
+            daysLeft: req.daysLive, 
+            earnings: '—', 
+            amountPerPlay: req.amountPerPlay,
+            type: req.type,
+            remaining_count: req.approvedCount,
+            approved_count: req.approvedCount,
+            used_count: 0,
+            media_url: adToApprove?.image_url || adToApprove?.media_url,
+            gridSelection: adToApprove?.grid_cell_placement
+              ? adToApprove.grid_cell_placement.split(',').map(Number)
+              : [],
+            ads: req.ads,
+            plays_per_stream: req.playsPerStream || 24
+          }].sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
+          
+          setSecureItem(`streamer_playlist_${userId}`, next)
+          return next
+        })
     }
 
-    // Persist to backend FIRST — await so the DB write completes
-    let backendAd = null
-    if (adToApprove) {
-      backendAd = await postApprovedAd(userId, {
-        brand_name: req.brand,
-        ad_name: adName,
-        campaign_id: req.campaignId,
-        approved_count: req.approvedCount,
-        remaining_count: req.approvedCount,
-        plays_per_stream: req.playsPerStream,
-        amount_per_play: req.amountPerPlay,
-        ad_media_url: adToApprove.image_url || adToApprove.media_url,
-        ad_media_type: adToApprove.ad_type,
-        grid_selection: adToApprove.grid_cell_placement
-          ? adToApprove.grid_cell_placement.split(',').map(Number)
-          : [],
-        show_duration: adToApprove.duration_seconds || 15,
-        layout_json: adToApprove
-      })
-
-      if (!backendAd) {
-        alert('Failed to save to database. Please try again.')
-        return
-      }
-    }
-
-    // Remove from incoming requests (UI only — DB is source of truth on refresh)
-    setAdRequests(p => p.filter(r => r.id !== reqId))
-
-    // Add to playlist
-    setPlaylist(p => {
-      const next = [...p, {
-        id: backendAd ? `approved_${backendAd.id}` : campaignId,
-        backendId: backendAd?.id,
-        name: adName,
-        brand: req.brand,
-        campaignId: req.campaignId,
-        duration: adToApprove?.duration_seconds || 15, 
-        status: 'live', 
-        daysLeft: req.daysLive, 
-        earnings: '—', 
-        amountPerPlay: req.amountPerPlay,
-        type: req.type,
-        remaining_count: req.approvedCount,
-        approved_count: req.approvedCount,
-        used_count: 0,
-        media_url: adToApprove?.image_url || adToApprove?.media_url,
-        gridSelection: adToApprove?.grid_cell_placement
-          ? adToApprove.grid_cell_placement.split(',').map(Number)
-          : [],
-        ads: req.ads
-      }].sort((a, b) => (b.amountPerPlay || 0) - (a.amountPerPlay || 0))
-      
-      // Update cache immediately
-      setSecureItem(`streamer_playlist_${userId}`, next)
-      return next
-    })
+    setAdRequests(p => p.filter(r => r.id !== brandId))
   }
 
-  const rejectRequest = async (reqId) => {
-    if (!window.confirm('Reject this ad request?')) return
-    const req = adRequests.find(r => r.id === reqId)
-    if (!req) return
+  const rejectBrand = async (brandId) => {
+    if (!window.confirm('Reject this brand?')) return
+    const brand = adRequests.find(b => b.id === brandId)
+    if (!brand) return
     const userId = user?.id || user?.uid || id
     
-    // Persist to backend FIRST
-    const adToReject = req.ads?.[0]
-    const adName = adToReject?.ad_name || req.campaignName || req.displayName.split(' — ')[1] || req.displayName
-    
-    const newRej = await postRejectedAd(userId, {
-      brand_name: req.brand,
-      ad_name: adName,
-      campaign_id: req.campaignId,
-      status: 'rejected'
-    })
+    for (const req of brand.ads) {
+        const adToReject = req.ads[0]
+        const adName = adToReject?.ad_name || req.campaignName || req.displayName
+        
+        const newRej = await postRejectedAd(userId, {
+            brand_name: brand.brandName,
+            ad_name: adName,
+            campaign_id: req.campaignId,
+            status: 'rejected'
+        })
 
-    if (!newRej) {
-      alert('Failed to save rejection. Please try again.')
-      return
+        if (newRej) {
+            const rejectedEntry = {
+              ...newRej,
+              name: newRej.ad_name || 'Unnamed Ad',
+              brand: newRej.brand_name || 'Unknown Brand',
+              reason: 'Rejected by streamer'
+            }
+            
+            setRejectedAds(p => {
+              const next = [rejectedEntry, ...p]
+              setSecureItem(`streamer_rejected_${userId}`, next)
+              return next
+            })
+        }
     }
-
-    // Update UI
-    const rejectedEntry = {
-      ...newRej,
-      name: newRej.ad_name || 'Unnamed Ad',
-      brand: newRej.brand_name || 'Unknown Brand',
-      reason: 'Rejected by streamer'
-    }
-    
-    setRejectedAds(p => {
-      const next = [rejectedEntry, ...p]
-      setSecureItem(`streamer_rejected_${userId}`, next)
-      return next
-    })
-
-    setAdRequests(p => p.filter(r => r.id !== reqId))
+    setAdRequests(p => p.filter(r => r.id !== brandId))
   }
 
   const approveRejectedAd = (ad) => {
@@ -1075,6 +1351,18 @@ export default function StreamerDashboard() {
     setAdsAiredCount(0)
     setStreamElapsed(0)
 
+    // ── Persist stream session so page refresh doesn't end it ──
+    const userId2 = user?.id || user?.uid || id
+    sessionStorage.setItem(`stream_session_${userId2}`, JSON.stringify({
+      isStreaming: true,
+      streamTitle,
+      streamLink,
+      streamContent,
+      streamStartTime: Date.now(),
+      adsAiredCount: 0,
+      selectedStreamAds
+    }))
+
     // Send to backend
     startStreamSession(sessionPayload)
   }
@@ -1166,6 +1454,9 @@ export default function StreamerDashboard() {
     setStreamPlaysMap({})
     setOverlayLink('') // clear the OBS link — a new one is generated on next stream start
     setIsStreaming(false)
+    // Clear persisted stream session
+    const userId3 = user?.id || user?.uid || id
+    sessionStorage.removeItem(`stream_session_${userId3}`)
     setStreamStartTime(null)
     setStreamElapsed(0)
     setGoLiveStep(1)
@@ -1505,7 +1796,7 @@ export default function StreamerDashboard() {
                 ))}
               </div>
 
-              <div className="sd-card" style={{ marginTop: '0' }}>
+              <div style={{ marginTop: '1rem' }}>
                 {(() => {
                   const items = playlistTab === 'live' ? liveAds 
                               : playlistTab === 'upcoming' ? upcomingAds
@@ -1515,76 +1806,47 @@ export default function StreamerDashboard() {
                     return <p className="sd-empty">No {playlistTab} ads.</p>
                   }
 
+                  // Group items by brand
+                  const groupedPlaylist = {};
+                  items.forEach(item => {
+                    const bName = item.brand || 'Unknown';
+                    if (!groupedPlaylist[bName]) groupedPlaylist[bName] = { brandName: bName, items: [], totalPay: 0 };
+                    groupedPlaylist[bName].items.push(item);
+                    groupedPlaylist[bName].totalPay += (item.amountPerPlay || 0);
+                  });
+                  
+                  const sortedBrands = Object.values(groupedPlaylist).sort((a, b) => b.totalPay - a.totalPay);
+
                   return (
-                    <div className="sd-playlist-list">
-                      {items.map((ad, i) => {
-                        const isPlaying = playlistTab === 'live' && i === activeIndex
+                    <div className="sd-playlist-list" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem', background: 'transparent', padding: '0', border: 'none' }}>
+                      {sortedBrands.map(brandGroup => {
                         return (
-                          <div
-                            key={ad.id}
-                            className={`sd-playlist-row ${isPlaying ? 'now-playing' : ''}`}
-                            draggable={!isEditMode && playlistTab === 'live'}
-                            onDragStart={e => handleDragStart(e, ad.id)}
-                            onDragOver={e => e.preventDefault()}
-                            onDrop={e => handleDrop(e, ad.id)}
-                          >
-                            {isEditMode ? (
-                              <input type="checkbox" className="sd-checkbox"
-                                checked={checkedIds.includes(ad.id)}
-                                onChange={e => setCheckedIds(prev =>
-                                  e.target.checked ? [...prev, ad.id] : prev.filter(x => x !== ad.id)
-                                )}/>
-                            ) : (
-                              playlistTab === 'live' && <span className="sd-drag-handle">⠿</span>
-                            )}
-
-                          <div className="sd-playlist-row-wrap" style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '0.85rem' }}>
-                            <div className="sd-live-thumb">
-                              {(ad.media_url || ad.ads?.[0]?.media_url) 
-                                ? <img src={ad.media_url || ad.ads?.[0]?.media_url} alt="" />
-                                : <div className="sd-live-thumb-placeholder">{ad.brand?.[0] || 'A'}</div>
-                              }
-                            </div>
-
-                            <div className="sd-pl-info">
-                              <span className="sd-pl-name">{ad.name}</span>
-                              <span className="sd-pl-meta">
-                                {ad.brand} · {ad.type?.replace('_',' ')}
-                                {ad.amountPerPlay > 0 && ` · ₹${ad.amountPerPlay.toFixed(2)} / play`}
-                                {ad.plays_per_stream != null && (
-                                  <span style={{
-                                    marginLeft: '0.4rem',
-                                    fontWeight: 600,
-                                    color: ad.plays_per_stream === 0 ? '#EF4444'
-                                         : ad.plays_per_stream <= 2   ? '#F59E0B'
-                                         : '#059669'
-                                  }}>
-                                    · {ad.plays_per_stream === 0
-                                        ? '⚠ Stream quota done'
-                                        : `${ad.plays_per_stream} play${ad.plays_per_stream !== 1 ? 's' : ''} / stream`}
-                                  </span>
-                                )}
-                              </span>
-                            </div>
+                          <div key={brandGroup.brandName} className="sd-req-card" style={{ cursor: 'pointer', transition: 'transform 0.2s ease, box-shadow 0.2s ease', padding: '0', borderRadius: '12px', overflow: 'hidden', background: 'white' }} onClick={() => setSelectedBrandAdsModal(brandGroup)} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 16px -4px rgba(0,0,0,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = ''; }}>
+                             <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                  <div className="sd-brand-logo-sm" style={{ background: '#10b981', color: 'white' }}>{brandGroup.brandName[0]}</div>
+                                  <h3 className="sd-req-title" style={{ margin: 0 }}>{brandGroup.brandName}</h3>
+                               </div>
+                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #f1f5f9' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                     <div className="sd-eyebrow" style={{ fontSize: '0.6rem' }}>Ads Approved</div>
+                                     <div className="sd-req-meta" style={{ margin: 0, color: '#334155', fontWeight: 600 }}>{brandGroup.items.length} ad{brandGroup.items.length > 1 ? 's' : ''}</div>
+                                  </div>
+                                  <div style={{ height: '24px', width: '1px', background: '#e2e8f0' }} />
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-end' }}>
+                                     <div className="sd-eyebrow" style={{ fontSize: '0.6rem' }}>Total Value</div>
+                                     <div className="sd-brand-earned" style={{ margin: 0, fontSize: '1rem' }}>₹{(brandGroup.totalPay || 0).toFixed(2)} <span className="sd-brand-earned-label" style={{ display: 'inline', fontSize: '0.75rem' }}>/ play</span></div>
+                                  </div>
+                               </div>
+                               <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                  <span className="sd-days-badge blue">View Ads →</span>
+                               </div>
+                             </div>
                           </div>
-                          <div className="sd-pl-right">
-                            {ad.status === 'upcoming' && (
-                              <span className="sd-days-badge blue">Starts in {ad.daysLeft}d</span>
-                            )}
-                            {ad.status === 'ended' && (
-                              <span className="sd-days-badge muted">Ended</span>
-                            )}
-                            <span className="sd-pl-earn">{ad.earnings}</span>
-                            <button className="sd-btn-ghost sd-btn-xs"
-                              onClick={() => { setPreviewAd(ad); setPreviewOpen(true) }}>
-                              Preview
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
+                        )
+                      })}
+                    </div>
+                  )
               })()}
               </div>
             </div>
@@ -1595,8 +1857,8 @@ export default function StreamerDashboard() {
             <div className="sd-content">
               <div className="sd-page-header">
                 <div>
-                  <div className="sd-eyebrow">Brands & Requests</div>
-                  <h1 className="sd-page-title">Brands & <em>requests</em></h1>
+                  <div className="sd-eyebrow">Brand Requests</div>
+                  <h1 className="sd-page-title">Brand <em>Requests</em></h1>
                 </div>
               </div>
 
@@ -1627,7 +1889,7 @@ export default function StreamerDashboard() {
                 </div>
                 <div className="sd-brands-grid">
                   {liveBrands.map(brand => (
-                    <div key={brand.id} className="sd-brand-card" style={{ '--brand-color': brand.color }}>
+                    <div key={brand.id} className="sd-brand-card" style={{ '--brand-color': brand.color, cursor: 'pointer' }} onClick={() => setSelectedBrandModal(brand)}>
                       <div className="sd-brand-card-top">
                         <div className="sd-brand-logo" style={{ background: brand.color, color: 'white' }}>
                           {brand.logo}
@@ -1663,70 +1925,79 @@ export default function StreamerDashboard() {
               </div>
 
               {/* ── Ad requests section ── */}
-              {adRequests.length === 0
-                ? (
-                  <div className="sd-card" style={{ marginBottom: '1.25rem' }}>
-                    <div className="sd-card-header">
-                      <div>
-                        <div className="sd-eyebrow">Incoming</div>
-                        <h2 className="sd-card-title">Ad <em>requests</em></h2>
-                      </div>
-                      <div className="sd-request-stats-inline">
-                        <span className="sd-days-badge green">92% approval rate</span>
-                        <span className="sd-days-badge blue">₹12,400 avg budget</span>
-                      </div>
-                    </div>
-                    <p className="sd-empty">No pending requests — you're all caught up! 🎉</p>
+              <div className="sd-card" style={{ marginBottom: '1.25rem' }}>
+                <div className="sd-card-header">
+                  <div>
+                    <div className="sd-eyebrow">Incoming</div>
+                    <h2 className="sd-card-title">Brand <em>Requests</em></h2>
                   </div>
-                )
-                : (
-                  <div className="sd-card" style={{ marginBottom: '1.25rem' }}>
-                    <div className="sd-card-header">
-                      <div>
-                        <div className="sd-eyebrow">Incoming</div>
-                        <h2 className="sd-card-title">Ad <em>requests</em></h2>
-                      </div>
-                      <div className="sd-request-stats-inline">
-                        <span className="sd-days-badge green">92% approval rate</span>
-                        <span className="sd-days-badge blue">₹12,400 avg budget</span>
-                        {adRequests.length > 0 && (
-                          <span className="sd-nav-badge" style={{ fontSize: '0.65rem', padding: '0.15rem 0.55rem' }}>{adRequests.length} pending</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="sd-request-list">
-                      {adRequests.map(req => (
-                        <div key={req.id} className="sd-request-row">
-                          <div className="sd-request-avatar">{req.brand[0]}</div>
-                          <div className="sd-request-info">
-                            <span className="sd-request-name">{req.displayName}</span>
-                            <span className="sd-request-meta">
-                              {req.tier} · {req.budgetRange}
-                              {req.amountPerPlay > 0 && ` (₹${req.amountPerPlay.toFixed(2)}/play)`}
-                              {` · ${req.daysLive} days · ${req.type?.replace('_',' ')} · ${req.approvedCount} plays`}
-                            </span>
-                          </div>
-                          <div className="sd-request-btns">
-                            <button className="sd-btn-ghost sd-btn-sm"
-                              onClick={() => { setPreviewAd(req); setPreviewOpen(true) }}>
-                              Preview
-                            </button>
-                            <button className="sd-btn-primary sd-btn-sm" onClick={() => approveRequest(req.id, req.campaignId)}>Approve</button>
-                            <button className="sd-btn-danger-sm" onClick={() => rejectRequest(req.id)}>Reject</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="sd-request-stats-inline">
+                    {adRequests.length > 0 && (
+                      <span className="sd-nav-badge" style={{ fontSize: '0.65rem', padding: '0.15rem 0.55rem' }}>{adRequests.length} pending</span>
+                    )}
                   </div>
-                )
-              }
+                </div>
 
+                {adRequests.length === 0 ? (
+                  <div style={{ padding: '3rem 1.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                    {/* Animated icon stack */}
+                    <div style={{ position: 'relative', width: '72px', height: '72px', marginBottom: '0.25rem' }}>
+                      <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'linear-gradient(135deg, #dbeafe, #ede9fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>🤝</div>
+                      <div style={{ position: 'absolute', top: '-6px', right: '-6px', width: '24px', height: '24px', borderRadius: '50%', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 700, boxShadow: '0 0 0 3px white' }}>✓</div>
+                    </div>
+                    <div>
+                      <h3 className="sd-req-title" style={{ margin: '0 0 0.35rem' }}>All clear!</h3>
+                      <p className="sd-req-meta" style={{ margin: 0 }}>No incoming brand requests right now.<br/>New partnerships will show up here.</p>
+                    </div>
+                    <span className="sd-days-badge blue" style={{ marginTop: '0.25rem' }}>Sit back &amp; stream 🎮</span>
+                  </div>
+                ) : (
+                  <div style={{ padding: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
+                    {adRequests.map(brand => (
+                      <div key={brand.id} className="sd-req-card" style={{ padding: '0', borderRadius: '12px', overflow: 'hidden', background: 'white', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}
+                        onClick={() => setSelectedBrandRequestModal(brand)}
+                        onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 16px -4px rgba(0,0,0,0.1)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = ''; }}
+                      >
+                        {/* Card top accent */}
+                        <div style={{ height: '4px', background: 'linear-gradient(90deg, #3B5BFF, #6B8DFF)' }} />
+                        <div style={{ padding: '1.1rem 1.1rem 1rem' }}>
+                          {/* Brand identity row */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.85rem' }}>
+                            <div className="sd-brand-logo-sm" style={{ background: '#3B5BFF', color: 'white', flexShrink: 0 }}>{brand.brandName[0]}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <h3 className="sd-req-title" style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{brand.brandName}</h3>
+                            </div>
+                            <span className="sd-nav-badge" style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', background: '#fef3c7', color: '#b45309', flexShrink: 0 }}>Pending</span>
+                          </div>
+                          {/* Stats */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', background: '#f8fafc', borderRadius: '8px', padding: '0.6rem 0.85rem', border: '1px solid #f1f5f9', marginBottom: '0.85rem' }}>
+                            <div>
+                              <div className="sd-eyebrow" style={{ fontSize: '0.58rem' }}>Ads</div>
+                              <div className="sd-req-meta" style={{ margin: 0, fontWeight: 600, color: '#334155' }}>{brand.ads.length}</div>
+                            </div>
+                            <div style={{ width: '1px', background: '#e2e8f0' }} />
+                            <div style={{ textAlign: 'right' }}>
+                              <div className="sd-eyebrow" style={{ fontSize: '0.58rem' }}>Potential</div>
+                              <div className="sd-brand-earned" style={{ margin: 0, fontSize: '0.9rem' }}>₹{(brand.totalBrandPay || 0).toFixed(2)} <span className="sd-brand-earned-label" style={{ display: 'inline', fontSize: '0.7rem' }}>/play</span></div>
+                            </div>
+                          </div>
+                          {/* CTA */}
+                          <div className="sd-days-badge blue" style={{ width: '100%', justifyContent: 'center', display: 'flex', cursor: 'pointer', boxSizing: 'border-box' }}>View Ads →</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Rejected Ads ── */}
               {rejectedAds.length > 0 && (
-                <div className="sd-card">
+                <div className="sd-card" style={{ marginTop: '1.25rem' }}>
                   <div className="sd-card-header">
                     <div>
                       <div className="sd-eyebrow">Declined</div>
-                      <h2 className="sd-card-title">Rejected <em>ads</em></h2>
+                      <h2 className="sd-card-title">Rejected <em>Ads</em></h2>
                     </div>
                   </div>
                   <div className="sd-rejected-list">
@@ -2380,8 +2651,8 @@ export default function StreamerDashboard() {
                                             (s.ads || []).map((ad, ai) => (
                                               <div key={ai} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                  <span style={{ fontSize: '0.85rem', fontWeight: '500', color: '#1E293B' }}>{ad.brand_name || 'Brand'}</span>
-                                                  <span style={{ fontSize: '0.7rem', color: '#64748B' }}>{ad.ad_name}</span>
+                                                  <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#1E293B', fontFamily: "'Inter', sans-serif", letterSpacing: '-0.01em' }}>{ad.brand_name || ad.brand || playlist.find(p => p.name === ad.ad_name)?.brand || 'Unknown Brand'}</span>
+                                                  <span style={{ fontSize: '0.75rem', color: '#64748B', fontFamily: "'Inter', sans-serif" }}>{ad.ad_name}</span>
                                                 </div>
                                                 <div style={{ textAlign: 'right' }}>
                                                   <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#059669' }}>₹{(ad.earned_cents / 100).toFixed(2)}</div>
@@ -2586,7 +2857,7 @@ export default function StreamerDashboard() {
 
       {/* ── PREVIEW MODAL ── */}
       {previewOpen && (
-        <div className="sd-modal-overlay" onClick={() => setPreviewOpen(false)}>
+        <div className="sd-modal-overlay" style={{ zIndex: 1100 }} onClick={() => setPreviewOpen(false)}>
           <div className="sd-modal sd-modal-lg" onClick={e => e.stopPropagation()}>
             <div className="sd-modal-head">
               <div>
@@ -2778,18 +3049,211 @@ export default function StreamerDashboard() {
               </div>
             </div>
 
-            {/* Adaptive footer: show approve/reject for requests, just close for playlist */}
-            {previewAd?.id?.startsWith?.('req_') ? (
-              <div className="sd-modal-footer" style={{ padding: '1.5rem 1.75rem', borderTop: '1px solid var(--border)', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button className="sd-btn-ghost" onClick={() => setPreviewOpen(false)}>Close</button>
-                <button className="sd-btn-danger-sm" style={{ padding: '0.6rem 1.3rem' }} onClick={() => { rejectRequest(previewAd.id); setPreviewOpen(false); }}>Reject</button>
-                <button className="sd-btn-primary" onClick={() => { approveRequest(previewAd.id, previewAd.campaignId); setPreviewOpen(false); }}>Approve Request</button>
-              </div>
-            ) : (
               <div className="sd-modal-footer" style={{ padding: '1.25rem 1.75rem', borderTop: '1px solid var(--border)', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
                 <button className="sd-btn-ghost" onClick={() => setPreviewOpen(false)}>Close</button>
               </div>
-            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── BRAND REQUEST MODAL ── */}
+      {selectedBrandRequestModal && (
+        <div className="sd-modal-overlay" onClick={() => setSelectedBrandRequestModal(null)}>
+          <div className="sd-modal sd-modal-lg" onClick={e => e.stopPropagation()} style={{ maxWidth: '680px', width: '95vw' }}>
+            <div className="sd-modal-head">
+              <div>
+                <div className="sd-eyebrow">Brand Request</div>
+                <h3 className="sd-modal-title">{selectedBrandRequestModal.brandName}</h3>
+                <div className="sd-req-meta" style={{ marginTop: '0.2rem' }}>
+                  {selectedBrandRequestModal.ads.length} ad{selectedBrandRequestModal.ads.length > 1 ? 's' : ''} pending · ₹{(selectedBrandRequestModal.totalBrandPay || 0).toFixed(2)} / play potential
+                </div>
+              </div>
+              <button className="sd-modal-close" onClick={() => setSelectedBrandRequestModal(null)}>✕</button>
+            </div>
+
+            {/* Ads as cards */}
+            <div style={{ padding: '1.25rem 1.5rem', maxHeight: '55vh', overflowY: 'auto', background: '#f8fafc' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.85rem' }}>
+                {selectedBrandRequestModal.ads.map(req => {
+                  const thumbUrl = req.media_url || req.ads?.[0]?.media_url
+                  return (
+                    <div key={req.id} style={{ background: 'white', borderRadius: '10px', border: '1px solid #e2e8f0', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                      {/* Thumbnail */}
+                      <div style={{ width: '100%', height: '90px', background: '#f1f5f9', flexShrink: 0, overflow: 'hidden' }}>
+                        {thumbUrl
+                          ? <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', color: '#94a3b8' }}>{selectedBrandRequestModal.brandName[0]}</div>
+                        }
+                      </div>
+                      {/* Body */}
+                      <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', flex: 1 }}>
+                        <span className="sd-pl-name" style={{ fontSize: '0.85rem' }}>{req.displayName}</span>
+                        <span className="sd-pl-meta">
+                          {req.type?.replace('_', ' ')} · {req.daysLive}d
+                        </span>
+                        <span className="sd-brand-earned" style={{ margin: 0, fontSize: '0.85rem' }}>₹{(req.amountPerPlay || 0).toFixed(2)} <span className="sd-brand-earned-label" style={{ display: 'inline', fontSize: '0.7rem' }}>/play</span></span>
+                        <div style={{ marginTop: 'auto', paddingTop: '0.35rem' }}>
+                          <button className="sd-btn-ghost sd-btn-xs" onClick={() => { setPreviewAd(req); setPreviewOpen(true); }}>Preview</button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Action footer */}
+            <div className="sd-modal-footer" style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button className="sd-btn-ghost" onClick={() => setSelectedBrandRequestModal(null)}>Cancel</button>
+              <button className="sd-btn-danger-outline" onClick={() => { rejectBrand(selectedBrandRequestModal.id); setSelectedBrandRequestModal(null); }}>Reject Brand</button>
+              <button className="sd-btn-primary" onClick={() => { approveBrand(selectedBrandRequestModal.id); setSelectedBrandRequestModal(null); }}>Approve Brand & Add Ads</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BRAND EARNINGS MODAL ── */}
+      {selectedBrandModal && (
+        <div className="sd-modal-overlay" onClick={() => setSelectedBrandModal(null)}>
+          <div className="sd-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px', width: '95vw' }}>
+            <div className="sd-modal-head">
+              <div>
+                <div className="sd-eyebrow">Brand Partner</div>
+                <h3 className="sd-modal-title">{selectedBrandModal.name}</h3>
+                {selectedBrandModal.category && <div className="sd-modal-brand-chip">{selectedBrandModal.category}</div>}
+              </div>
+              <button className="sd-modal-close" onClick={() => setSelectedBrandModal(null)}>✕</button>
+            </div>
+            <div style={{ padding: '1.5rem 1.75rem' }}>
+              {/* Big earnings number */}
+              <div style={{ textAlign: 'center', padding: '1.5rem 1rem', background: '#f8fafc', borderRadius: '12px', marginBottom: '1.25rem' }}>
+                <div className="sd-brand-earned" style={{ fontSize: '2.5rem', margin: 0 }}>₹{(selectedBrandModal.earned_cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div className="sd-brand-earned-label" style={{ marginTop: '0.25rem' }}>Total earned from this brand</div>
+              </div>
+              {/* Stats row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '1rem', textAlign: 'center' }}>
+                  <div className="sd-brand-stat-val" style={{ fontSize: '1.5rem' }}>{selectedBrandModal.streamsCount}</div>
+                  <div className="sd-brand-stat-key">Streams with ads</div>
+                </div>
+                <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '1rem', textAlign: 'center' }}>
+                  <div className="sd-brand-stat-val" style={{ fontSize: '1.5rem' }}>
+                    {selectedBrandModal.lastStreamDate === 'Never' ? 'Never'
+                      : new Date(selectedBrandModal.lastStreamDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </div>
+                  <div className="sd-brand-stat-key">Last streamed</div>
+                </div>
+              </div>
+              {/* Status */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1rem', background: '#f8fafc', borderRadius: '10px' }}>
+                <span className="sd-brand-stat-key">Partnership status</span>
+                <StatusBadge status={selectedBrandModal.status} />
+              </div>
+              {/* Earnings bar */}
+              {selectedBrandModal.earned_cents > 0 && (
+                <div style={{ marginTop: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                    <span className="sd-brand-stat-key">Earnings progress</span>
+                    <span className="sd-brand-stat-key">{Math.min(Math.round((selectedBrandModal.earned_cents / 5000000) * 100), 100)}%</span>
+                  </div>
+                  <div className="sd-brand-bar-track">
+                    <div className="sd-brand-bar-fill" style={{ background: selectedBrandModal.color, width: `${Math.min((selectedBrandModal.earned_cents / 5000000) * 100, 100)}%` }}/>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="sd-modal-footer" style={{ padding: '1.25rem 1.75rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="sd-btn-ghost" onClick={() => setSelectedBrandModal(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BRAND ADS MODAL ── */}
+      {selectedBrandAdsModal && (
+        <div className="sd-modal-overlay" onClick={() => setSelectedBrandAdsModal(null)}>
+          <div className="sd-modal sd-modal-lg" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', width: '95vw' }}>
+            <div className="sd-modal-head">
+              <div>
+                <div className="sd-eyebrow">Brand Schedule</div>
+                <h3 className="sd-modal-title">{selectedBrandAdsModal.brandName} Ads</h3>
+              </div>
+              <button className="sd-modal-close" onClick={() => setSelectedBrandAdsModal(null)}>✕</button>
+            </div>
+            <div style={{ padding: '1.25rem 1.5rem', maxHeight: '65vh', overflowY: 'auto', background: '#f8fafc' }}>
+               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.85rem' }}>
+                  {selectedBrandAdsModal.items.map(ad => {
+                    const i = playlistTab === 'live' ? liveAds.findIndex(x => x.id === ad.id) : -1;
+                    const isPlaying = playlistTab === 'live' && i === activeIndex;
+                    const thumbUrl = ad.media_url || ad.ads?.[0]?.media_url;
+                    return (
+                      <div
+                        key={ad.id}
+                        draggable={!isEditMode && playlistTab === 'live'}
+                        onDragStart={e => handleDragStart(e, ad.id)}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={e => handleDrop(e, ad.id)}
+                        style={{
+                          background: 'white',
+                          borderRadius: '10px',
+                          border: `1.5px solid ${isPlaying ? '#10b981' : '#e2e8f0'}`,
+                          boxShadow: isPlaying ? '0 0 0 3px rgba(16,185,129,0.12)' : '0 1px 3px rgba(0,0,0,0.05)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          overflow: 'hidden',
+                          minHeight: '160px'
+                        }}
+                      >
+                        {/* Thumbnail */}
+                        <div style={{ width: '100%', height: '100px', background: '#f1f5f9', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
+                          {thumbUrl
+                            ? <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', color: '#94a3b8' }}>{ad.brand?.[0] || 'A'}</div>
+                          }
+                          {isPlaying && (
+                            <div style={{ position: 'absolute', top: '0.4rem', left: '0.4rem', background: '#10b981', color: 'white', fontSize: '0.6rem', fontWeight: 700, padding: '0.15rem 0.4rem', borderRadius: '4px', textTransform: 'uppercase' }}>● Live</div>
+                          )}
+                          {isEditMode && (
+                            <div style={{ position: 'absolute', top: '0.4rem', right: '0.4rem' }}>
+                              <input type="checkbox" className="sd-checkbox"
+                                checked={checkedIds.includes(ad.id)}
+                                onChange={e => setCheckedIds(prev =>
+                                  e.target.checked ? [...prev, ad.id] : prev.filter(x => x !== ad.id)
+                                )}/>
+                            </div>
+                          )}
+                        </div>
+                        {/* Card body */}
+                        <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+                          <span className="sd-pl-name" style={{ fontSize: '0.88rem' }}>{ad.name}</span>
+                          <span className="sd-pl-meta">
+                            {ad.type?.replace('_',' ')}
+                            {ad.amountPerPlay > 0 && ` · ₹${ad.amountPerPlay.toFixed(2)} / play`}
+                            {ad.plays_per_stream != null && (
+                              <span style={{ marginLeft: '0.3rem', fontWeight: 600, color: ad.plays_per_stream === 0 ? '#EF4444' : ad.plays_per_stream <= 2 ? '#F59E0B' : '#3B82F6' }}>
+                                · {ad.plays_per_stream === 0 ? '⚠ done' : `${ad.plays_per_stream}×/stream`}
+                              </span>
+                            )}
+                          </span>
+                          {/* Footer row */}
+                          <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            {ad.status === 'upcoming' && <span className="sd-days-badge blue" style={{ fontSize: '0.65rem' }}>in {ad.daysLeft}d</span>}
+                            {ad.status === 'ended' && <span className="sd-days-badge muted" style={{ fontSize: '0.65rem' }}>Ended</span>}
+                            {ad.status === 'live' && !isPlaying && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />}
+                            <span style={{ flex: 1 }} />
+                            <button className="sd-btn-ghost sd-btn-xs" onClick={() => { setPreviewAd(ad); setPreviewOpen(true) }}>
+                              Preview
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+               </div>
+            </div>
+            <div className="sd-modal-footer" style={{ padding: '1.25rem 1.75rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+               <button className="sd-btn-ghost" onClick={() => setSelectedBrandAdsModal(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
@@ -2831,45 +3295,90 @@ export default function StreamerDashboard() {
                   return <p className="sd-empty">No approved ads match your selected grid positions.</p>
                 }
 
-                return matchingAds.map(ad => {
-                  const isSelected = selectedStreamAds.some(s => s.id === ad.id)
-                  const brand = DUMMY_BRANDS.find(b => b.name === ad.brand)
+                // Group by brand
+                const grouped = {}
+                matchingAds.forEach(ad => {
+                  const bName = ad.brand || 'Unknown'
+                  if (!grouped[bName]) grouped[bName] = []
+                  grouped[bName].push(ad)
+                })
+
+                return Object.entries(grouped).map(([brandName, ads]) => {
+                  const isExpanded = expandedPickerBrands[brandName]
+                  const allSelected = ads.every(ad => selectedStreamAds.some(s => s.id === ad.id))
+                  const someSelected = ads.some(ad => selectedStreamAds.some(s => s.id === ad.id))
+
                   return (
-                    <div key={ad.id} style={{
-                      display: 'flex', alignItems: 'center', gap: '0.75rem',
-                      padding: '0.85rem 1rem', marginBottom: '0.5rem',
-                      borderRadius: '10px',
-                      border: isSelected ? '2px solid #3B5BFF' : '1px solid var(--border)',
-                      background: isSelected ? '#EEF2FF' : 'white',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s'
-                    }} onClick={() => {
-                      setSelectedStreamAds(prev => {
-                        if (isSelected) return prev.filter(s => s.id !== ad.id)
-                        return [...prev, ad]
-                      })
-                    }}>
-                      <div style={{
-                        width: '20px', height: '20px', borderRadius: '4px',
-                        border: isSelected ? '2px solid #3B5BFF' : '2px solid #CBD5E1',
-                        background: isSelected ? '#3B5BFF' : 'white',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0, transition: 'all 0.15s'
-                      }}>
-                        {isSelected && <span style={{ color: 'white', fontSize: '0.7rem', fontWeight: 700 }}>✓</span>}
-                      </div>
-                      <div className="sd-brand-logo-sm" style={{ background: brand?.color || '#3B5BFF', color: 'white' }}>
-                        {ad.brand?.[0] || '?'}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 500, color: 'var(--ink)' }}>{ad.name}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-                          {ad.brand} · {ad.duration}s · {ad.type?.replace('_', ' ')}
-                          {ad.amountPerPlay > 0 && ` · ₹${ad.amountPerPlay.toFixed(2)} / play`}
-                          {ad.plays_per_stream != null && ` · ${ad.plays_per_stream} play${ad.plays_per_stream !== 1 ? 's' : ''}/stream`}
+                    <div key={brandName} className="sd-req-card" style={{ padding: '0', marginBottom: '0.75rem' }}>
+                      <div className="sd-req-head" style={{ padding: '0.85rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} onClick={() => togglePickerBrand(brandName)}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                           <div style={{
+                             width: '20px', height: '20px', borderRadius: '4px',
+                             border: allSelected ? '2px solid #3B5BFF' : (someSelected ? '2px solid #3B5BFF' : '2px solid #CBD5E1'),
+                             background: allSelected ? '#3B5BFF' : (someSelected ? '#EEF2FF' : 'white'),
+                             display: 'flex', alignItems: 'center', justifyContent: 'center',
+                             flexShrink: 0, transition: 'all 0.15s'
+                           }} onClick={(e) => {
+                             e.stopPropagation();
+                             if (allSelected) {
+                               // Deselect all
+                               setSelectedStreamAds(prev => prev.filter(s => !ads.find(a => a.id === s.id)))
+                             } else {
+                               // Select all
+                               setSelectedStreamAds(prev => {
+                                 const next = [...prev]
+                                 ads.forEach(a => {
+                                    if (!next.find(n => n.id === a.id)) next.push(a)
+                                 })
+                                 return next
+                               })
+                             }
+                           }}>
+                             {allSelected && <span style={{ color: 'white', fontSize: '0.7rem', fontWeight: 700 }}>✓</span>}
+                             {(!allSelected && someSelected) && <span style={{ color: '#3B5BFF', fontSize: '1rem', fontWeight: 700 }}>-</span>}
+                           </div>
+                           <div className="sd-brand-logo-sm" style={{ background: '#3B5BFF', color: 'white' }}>
+                             {brandName[0]}
+                           </div>
+                           <div>
+                             <h3 className="sd-req-title" style={{ fontSize: '0.9rem', margin: 0 }}>{brandName}</h3>
+                             <div className="sd-req-meta" style={{ fontSize: '0.75rem' }}>{ads.length} matching ad{ads.length !== 1 ? 's' : ''}</div>
+                           </div>
                         </div>
+                        <span style={{ fontSize: '1rem', color: '#64748b', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
                       </div>
-                      <StatusBadge status={ad.status} />
+                      
+                      {isExpanded && (
+                         <div style={{ borderTop: '1px solid #e2e8f0', background: '#f8fafc', padding: '0.75rem 1rem' }}>
+                           {ads.map(ad => {
+                             const isSelected = selectedStreamAds.some(s => s.id === ad.id)
+                             return (
+                               <div key={ad.id} style={{
+                                 display: 'flex', alignItems: 'center', gap: '0.75rem',
+                                 padding: '0.5rem 0.75rem', marginBottom: '0.5rem',
+                                 borderRadius: '8px',
+                                 border: isSelected ? '1px solid #3B5BFF' : '1px solid #e2e8f0',
+                                 background: isSelected ? '#EEF2FF' : 'white',
+                                 cursor: 'pointer',
+                                 transition: 'all 0.15s'
+                               }} onClick={() => {
+                                 setSelectedStreamAds(prev => {
+                                   if (isSelected) return prev.filter(s => s.id !== ad.id)
+                                   return [...prev, ad]
+                                 })
+                               }}>
+                                 <div style={{ flex: 1 }}>
+                                   <div style={{ fontSize: '0.82rem', fontWeight: 500, color: '#1e293b' }}>{ad.name}</div>
+                                   <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                                     {ad.duration}s · {ad.type?.replace('_', ' ')}
+                                     {ad.amountPerPlay > 0 && ` · ₹${ad.amountPerPlay.toFixed(2)} / play`}
+                                   </div>
+                                 </div>
+                               </div>
+                             )
+                           })}
+                         </div>
+                      )}
                     </div>
                   )
                 })
@@ -2883,7 +3392,25 @@ export default function StreamerDashboard() {
                 <button className="sd-btn-ghost" onClick={() => setSelectedStreamAds([])}>Clear all</button>
                 <button className="sd-btn-primary" onClick={() => {
                   const userId = user?.id || user?.uid || id
-                  setSecureItem(`streamer_stream_ads_${userId}`, selectedStreamAds)
+                  
+                  // Sorting by brand-wise most expensive
+                  const brandMaxPay = {};
+                  selectedStreamAds.forEach(ad => {
+                    const pay = ad.amountPerPlay || 0;
+                    if (!brandMaxPay[ad.brand] || brandMaxPay[ad.brand] < pay) {
+                      brandMaxPay[ad.brand] = pay;
+                    }
+                  });
+
+                  const sortedAds = [...selectedStreamAds].sort((a, b) => {
+                    const brandDiff = (brandMaxPay[b.brand] || 0) - (brandMaxPay[a.brand] || 0);
+                    if (brandDiff !== 0) return brandDiff;
+                    if (a.brand !== b.brand) return a.brand.localeCompare(b.brand);
+                    return (b.amountPerPlay || 0) - (a.amountPerPlay || 0);
+                  });
+
+                  setSecureItem(`streamer_stream_ads_${userId}`, sortedAds)
+                  setSelectedStreamAds(sortedAds)
                   setShowAdPicker(false)
                 }}>
                   Confirm selection
